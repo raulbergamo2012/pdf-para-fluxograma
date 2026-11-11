@@ -383,7 +383,7 @@ export function renderSVG(model, opts = {}) {
     const stroke = s.noShape ? 'none' : (n.stroke || '#333333');
     const sel = opts.mark?.nodes?.has(n.id) ? ' data-sel="1"' : '';
     const dash = n.dashed ? ' stroke-dasharray="6 4"' : '';
-    return `<g class="vn" data-id="${escX(n.id)}"${sel}><g fill="${fill}" stroke="${stroke}" stroke-width="${n.strokeWidth || 1.5}"${dash} stroke-linejoin="round">${s.draw(r2(n.x), r2(n.y), r2(n.w), r2(n.h), n)}</g>${n.titleChip ? '' : renderText(n)}</g>`;
+    return `<g class="vn" data-id="${escX(n.id)}"${sel}><g fill="${fill}" stroke="${stroke}" stroke-width="${n.strokeWidth || 1.5}"${dash} stroke-linejoin="round">${s.draw(r2(n.x), r2(n.y), r2(n.w), r2(n.h), n)}</g>${renderText(n)}</g>`;
   };
   const edge = (e) => {
     const pts = routeEdge(model, e);
@@ -397,50 +397,12 @@ export function renderSVG(model, opts = {}) {
       const [lx, ly] = labelPoint(model, e, pts);
       const size = 13;
       const tw = measure(e.label, size, true) + 10;
-      // Sim/Não com cor (verde/vermelho discretos) para diferenciar os caminhos de uma decisão
-      const yes = /^sim\b/i.test(e.label), no = /^n[aã]o\b/i.test(e.label);
-      const bg = yes ? '#E4F4E8' : no ? '#FCE8E8' : '#ffffff', fg = yes ? '#1E7A3C' : no ? '#B42318' : (e.labelColor || '#1a1a1a');
-      lab = `<rect x="${r2(lx - tw / 2)}" y="${r2(ly - 10)}" width="${r2(tw)}" height="20" rx="${yes || no ? 10 : 3}" fill="${bg}" stroke="${yes || no ? 'none' : (opts.labelBorder || 'none')}"/>`
-        + `<text x="${r2(lx)}" y="${r2(ly + 4.5)}" text-anchor="middle" font-family='${FONT}' font-size="${size}" font-weight="700" fill="${fg}">${escX(e.label)}</text>`;
+      lab = `<rect x="${r2(lx - tw / 2)}" y="${r2(ly - 10)}" width="${r2(tw)}" height="20" rx="3" fill="#ffffff" stroke="${opts.labelBorder || 'none'}"/>`
+        + `<text x="${r2(lx)}" y="${r2(ly + 4.5)}" text-anchor="middle" font-family='${FONT}' font-size="${size}" font-weight="700" fill="${e.labelColor || '#1a1a1a'}">${escX(e.label)}</text>`;
     }
     const sel = opts.mark?.edges?.has(e.id) ? ' data-sel="1"' : '';
     return `<g class="ve" data-eid="${escX(e.id)}"${sel}><path d="${d}" fill="none" stroke="${c}" stroke-width="${w}"${dash}${markers} stroke-linejoin="round"/>`
       + (opts.interactive ? `<path class="hit" d="${d}" fill="none" stroke="transparent" stroke-width="14"/>` : '') + lab + '</g>';
-  };
-  // título de etapa como "etiqueta" desenhada POR CIMA das setas: a seta que entra na etapa passa por baixo do
-  // título em vez de riscar o texto
-  const chip = (n) => {
-    const b = SHAPES.container.box(n.x, n.y, n.w, n.h, n);
-    const size = n.fontSize || 14;
-    const lines = wrapText(String(n.text || ''), Math.max(20, b.w - 16), size, true);
-    if (!lines.length) return '';
-    const tw = Math.min(b.w - 8, Math.max(...lines.map((l) => measure(l, size, true))) + 22), th = lines.length * size * 1.3 + 8;
-    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-    return `<g class="vchip" data-id="${escX(n.id)}" pointer-events="none"><rect x="${r2(cx - tw / 2)}" y="${r2(cy - th / 2)}" width="${r2(tw)}" height="${r2(th)}" rx="6" fill="${n.chipFill || '#eceff2'}"/>`
-      + `<text x="${r2(cx)}" text-anchor="middle" fill="${n.color || '#1a1a1a'}" font-family='${FONT}'>`
-      + lines.map((l, i) => `<tspan x="${r2(cx)}" y="${r2(cy - th / 2 + 4 + (i + 1) * size * 1.3 - size * 0.33)}" font-size="${size}" font-weight="700">${escX(l)}</tspan>`).join('') + '</text></g>';
-  };
-  // CONVERGÊNCIA: onde dois ou mais caminhos se juntam na mesma entrada, um ponto marca a junção
-  const junctions = () => {
-    const groups = new Map();
-    for (const e of model.edges) { const k = e.to + '|' + (e.toPort || ''); (groups.get(k) || groups.set(k, []).get(k)).push(e); }
-    let out = '';
-    for (const list of groups.values()) {
-      if (list.length < 2) continue;
-      const rs = list.map((e) => routeEdge(model, e)).filter((p) => p.length >= 2);
-      const ends = rs.map((p) => p[p.length - 1]);
-      if (!ends.every((p) => Math.abs(p[0] - ends[0][0]) < 1 && Math.abs(p[1] - ends[0][1]) < 1)) continue;
-      const vertical = rs.every((p) => Math.abs(p[p.length - 2][0] - p[p.length - 1][0]) < 1);
-      const horizontal = rs.every((p) => Math.abs(p[p.length - 2][1] - p[p.length - 1][1]) < 1);
-      if (!vertical && !horizontal) continue;
-      const end = ends[0];
-      // ponto de junção: o encontro mais próximo da entrada entre as linhas que chegam
-      const js = rs.map((p) => p[p.length - 2]).sort((a, b) => (vertical ? Math.abs(end[1] - a[1]) - Math.abs(end[1] - b[1]) : Math.abs(end[0] - a[0]) - Math.abs(end[0] - b[0])));
-      const j = js.find((p) => (vertical ? Math.abs(end[1] - p[1]) > 8 : Math.abs(end[0] - p[0]) > 8));
-      if (!j) continue;
-      out += `<circle cx="${r2(vertical ? end[0] : j[0])}" cy="${r2(vertical ? j[1] : end[1])}" r="3.4" fill="${list[0].stroke || '#333333'}"/>`;
-    }
-    return out;
   };
   const containers = model.nodes.filter((n) => n.shape === 'container');
   const others = model.nodes.filter((n) => n.shape !== 'container');
@@ -448,7 +410,7 @@ export function renderSVG(model, opts = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r2(vb.x)} ${r2(vb.y)} ${r2(vb.w)} ${r2(vb.h)}" width="${r2(w)}" height="${r2(h)}" data-visual="1">`
     + `<defs>${defs}</defs><g stroke="none">`
     + (opts.background ? `<rect x="${vb.x}" y="${vb.y}" width="${vb.w}" height="${vb.h}" fill="${opts.background}"/>` : '')
-    + containers.map(node).join('') + model.edges.map(edge).join('') + junctions() + containers.filter((n) => n.titleChip).map(chip).join('') + others.map(node).join('')
+    + containers.map(node).join('') + model.edges.map(edge).join('') + others.map(node).join('')
     + (opts.extra || '') + '</g></svg>';
 }
 

@@ -67,21 +67,6 @@ const slug = (s) => (s || 'fluxograma').normalize('NFD').replace(/[̀-ͯ]/g, '')
 /* Inspirados nos fluxogramas-modelo do usuário:
  *  classico → cinza sóbrio (modelos 1 e 3)    azul → corporativo (modelo 2)    moderno → colorido */
 const VISUAL_STYLES = {
-  // padrão: fundo branco, caixas brancas arredondadas com borda discreta, decisões em amarelo-claro (documentos e apresentações)
-  profissional: {
-    vars: { primaryColor: '#FFFFFF', primaryBorderColor: '#C7D0DA', primaryTextColor: '#1F2933', lineColor: '#6B7785',
-      secondaryColor: '#FBF3DC', tertiaryColor: '#F7F9FB', clusterBkg: '#F8FAFC', clusterBorder: '#D5DCE3', edgeLabelBackground: '#FFFFFF' },
-    classDefs: {
-      inicioFim: 'fill:#F1F4F7,stroke:#9AA6B2,stroke-width:1.3px,color:#1F2933',
-      decisao: 'fill:#FBF3DC,stroke:#D9B44A,stroke-width:1.3px,color:#3D3420',
-      erro: 'fill:#FFF5F5,stroke:#E3A3A3,stroke-width:1.3px,color:#5C2B2B',
-      lista: 'fill:#FFFFFF,stroke:#C7D0DA,stroke-width:1.3px,color:#1F2933',
-      nota: 'fill:#FFFDE7,stroke:#9E9E9E,stroke-width:1px,stroke-dasharray:4 3,color:#555555',
-      duvida: 'fill:#FFF8E6,stroke:#C98A00,stroke-width:1.3px,stroke-dasharray:5 3,color:#6B4E00',
-    },
-    labelCss: 'background:#fff;font-weight:600;',
-    rounded: true, lineWidth: 1.3,
-  },
   classico: {
     vars: { primaryColor: '#D9D9D9', primaryBorderColor: '#7F7F7F', primaryTextColor: '#1A1A1A', lineColor: '#262626',
       secondaryColor: '#BFBFBF', tertiaryColor: '#F2F2F2', clusterBkg: '#F7F7F7', clusterBorder: '#BFBFBF', edgeLabelBackground: '#FFFFFF' },
@@ -129,7 +114,7 @@ const TYPES = {
   decisao: { name: 'Decisão', full: 'Fluxograma de Tomada de Decisão' },
 };
 /** nome exibido: no Automático, o Decisão sem perguntas acrescentadas é o fluxograma ramificado por etapas */
-const typeFull = (it) => ((it?.auto || it?.natural) && itemType(it) === 'decisao' ? 'Fluxograma vertical por etapas' : it?.auto && itemType(it) === 'processo' && /\{"/.test(it.code || '') ? 'Fluxograma vertical com decisões' : TYPES[itemType(it)].full);
+const typeFull = (it) => (it?.auto && itemType(it) === 'decisao' ? 'Fluxograma ramificado por etapas' : TYPES[itemType(it)].full);
 const itemType = (it) => (TYPES[it?.type] ? it.type : codeType(it?.code) || 'decisao');
 
 // "auto": o gerador escolhe o layout pela estrutura do documento (vertical, raias ou ramificado por etapas)
@@ -150,7 +135,7 @@ function lanePalette() {
     decisionFill: cd('decisao', 'fill'), decisionStroke: cd('decisao', 'stroke'),
     terminalFill: cd('inicioFim', 'fill'), terminalStroke: cd('inicioFim', 'stroke'),
     errorFill: cd('erro', 'fill'), errorStroke: cd('erro', 'stroke'),
-    laneFill: '#ffffff', laneStroke: v.clusterBorder, rounded: !!st.rounded, lineWidth: st.lineWidth || 1.5,
+    laneFill: '#ffffff', laneStroke: v.clusterBorder,
   };
 }
 
@@ -170,7 +155,7 @@ function autoModel(item = state.current) {
 /** O que aparece na tela: o desenho editado à mão ou o layout automático do tipo */
 const displayModel = () => (manualVisual() ? state.current.visual : autoModel());
 
-const currentStyle = () => VISUAL_STYLES[state.config?.visualStyle] || VISUAL_STYLES.profissional;
+const currentStyle = () => VISUAL_STYLES[state.config?.visualStyle] || VISUAL_STYLES.classico;
 
 /** Aplica as cores do estilo escolhido ao código (sem alterar o que está salvo) */
 function styledCode(code) {
@@ -387,12 +372,8 @@ async function pipeline(getSource) {
     state.lastSource = src;
 
     const item = await generateAndValidate(src, mermaidReady);
-    // processos independentes no mesmo PDF: um fluxograma para cada (os demais vão para o histórico)
-    for (const extra of (item.parts || []).slice().reverse()) saveItem(extra);
-    delete item.parts;
     saveItem(item);
     await openItem(item);
-    if (item.splitNote) toast('📑 ' + item.splitNote, 8000);
   } catch (err) {
     console.error(err);
     toast('⚠️ ' + err.message, 7000);
@@ -428,16 +409,10 @@ async function generateAndValidate(src, mermaidReady, forceProvider, type = pref
   }
   setStep('done');
   return {
-    id: uid(), title: res.parts?.length && res.title ? `${src.title} — ${res.title}` : src.title, code, warning, provider, model, type: res.type || type,
-    auto: !!res.auto, natural: !!res.natural, autoReason: res.autoReason || '', issues: res.issues || [], structure: res.structure || null, goal: res.goal || '',
+    id: uid(), title: src.title, code, warning, provider, model, type: res.type || type,
+    auto: !!res.auto, autoReason: res.autoReason || '', issues: res.issues || [], structure: res.structure || null, goal: res.goal || '',
     sourceType: src.sourceType, sourceName: src.sourceName, pages: src.pages, words: src.words,
     durationMs: res.durationMs, createdAt: Date.now(), pinned: false,
-    splitNote: res.splitNote || '',
-    parts: (res.parts || []).map((p, k) => ({
-      id: uid(), title: `${src.title} — ${p.title}`, code: p.code, warning: p.warning || '', provider: p.provider, model: p.model || '', type: p.type,
-      auto: !!p.auto, natural: !!p.natural, autoReason: p.autoReason || '', issues: p.issues || [], structure: p.structure || null, goal: p.goal || '',
-      sourceType: src.sourceType, sourceName: src.sourceName, pages: src.pages, words: src.words, durationMs: p.durationMs, createdAt: Date.now() - (k + 1), pinned: false,
-    })),
   };
 }
 
@@ -881,13 +856,8 @@ function renderAnalysis() {
       <h3>Decisões mapeadas</h3>
       <p>${a.decisions ? `${plural(a.decisions, 'ponto de decisão identificado', 'pontos de decisão identificados')} no documento.` : 'Nenhuma decisão encontrada — o processo é sequencial.'}</p>
       <ul class="decisions">
-        ${a.decisionList.map((d) => {
-          // estrutura validada da decisão (camada 4): tipo de condição, origem no PDF e confiança
-          const sd = (item.structure?.decisions || []).find((x) => x.question.replace(/<br\/?>.*/, '') === String(d.question).replace(/\n.*/, ''));
-          return `<li><div class="q">${diamond}<span>${esc(d.question)}</span></div>
-          <div class="br">${d.branches.map((b) => `<span><b>${esc(b.label)}</b> → ${esc(b.to.slice(0, 60))}</span>`).join('')}</div>
-          ${sd ? `<div class="dmeta"><span>${esc(sd.kind)}</span><span class="conf ${sd.confidence}">confiança ${esc(sd.confidence)}</span>${sd.source ? `<span class="src" title="${esc(sd.source)}">PDF: “${esc(sd.source.length > 90 ? sd.source.slice(0, 87) + '…' : sd.source)}”</span>` : ''}</div>` : ''}</li>`;
-        }).join('')}
+        ${a.decisionList.map((d) => `<li><div class="q">${diamond}<span>${esc(d.question)}</span></div>
+          <div class="br">${d.branches.map((b) => `<span><b>${esc(b.label)}</b> → ${esc(b.to.slice(0, 60))}</span>`).join('')}</div></li>`).join('')}
       </ul>
     </div>
     <div class="a-card wide">
@@ -924,7 +894,7 @@ async function regenerate() {
     const fresh = await generateAndValidate(src, loadMermaid(), undefined, item.auto ? 'auto' : itemType(item));
     delete item.visual;
     Object.assign(item, { visual: null, code: fresh.code, warning: fresh.warning, provider: fresh.provider, model: fresh.model, durationMs: fresh.durationMs,
-      type: fresh.type, auto: fresh.auto, natural: fresh.natural, autoReason: fresh.autoReason, issues: fresh.issues, structure: fresh.structure, goal: fresh.goal });
+      type: fresh.type, auto: fresh.auto, autoReason: fresh.autoReason, issues: fresh.issues, structure: fresh.structure, goal: fresh.goal });
     updateItem(item.id, item);
     await openItem(item);
   } catch (e) {

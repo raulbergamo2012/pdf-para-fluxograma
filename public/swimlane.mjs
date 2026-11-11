@@ -54,8 +54,7 @@ export function autoLayout(code, opts = {}) {
   const nSteps = ids.filter((id) => !isNote(id)).length;
   const columns = type === 'processo' && !LR && sections.length >= 2 && nSteps > 14;
   // fluxograma ramificado POR ETAPAS: cada etapa do documento vira um bloco com título (agrupamento visual)
-  // (métodos alternativos ficam lado a lado sem blocos de etapa, para os caminhos não se sobreporem)
-  const staged = asked === 'decisao' && !LR && sections.length >= 2 && !/^\s*%%\s*alternativas/m.test(code);
+  const staged = asked === 'decisao' && !LR && sections.length >= 2;
   const lanes = useLanes && leafSgs.length ? leafSgs : columns ? sections : [{ id: '_', label: '', nodes: ids }];
   const laneOf = new Map();
   lanes.forEach((l, i) => l.nodes.forEach((id) => laneOf.set(id, i)));
@@ -165,39 +164,7 @@ export function autoLayout(code, opts = {}) {
   const rowMain = (r) => Math.max(40, ...[...cells.entries()].filter(([k]) => Number(k.split(':')[1]) === r).flatMap(([, v]) => v.map(along)),
     ...[...noteOf].filter(([, s]) => s && rank.get(s) === r).map(([n]) => along(n)));
   const cellCross = Math.max(...steps.map(across)) + GAP_CROSS;
-  // COLUNAS do fluxo sem raias: cada caminho mantém a sua coluna (não recentraliza a cada linha). Ramos de uma decisão
-  // abrem meia coluna para cada lado (Não à esquerda, Sim à direita); convergências voltam à coluna da decisão de
-  // origem; colisões na mesma linha empurram o vizinho uma coluna. Isso evita setas longas e diagonais de recentralização.
-  const colOf = new Map();
-  const useCols = !useLanes && !columns && !LR;
-  if (useCols) {
-    const brk = (id, p) => { const e = flowEdges.find((x) => x.from === p && x.to === id); return !e ? 1 : /^n[aã]o\b/i.test(e.label) ? 0 : /^sim\b/i.test(e.label) ? 2 : 1; };
-    for (let r = 0; r <= maxRank; r++) {
-      const row = (cells.get(key(0, r)) || []).slice();
-      for (const id of row) {
-        const ps = preds.get(id).filter((p) => colOf.has(p));
-        let c = 0;
-        if (ps.length === 1) {
-          const p = ps[0];
-          const kids = fwd.filter((e) => e.from === p).map((e) => e.to);
-          if (kindOf(p) === 'diamond' && kids.length >= 2) {
-            const sorted = kids.slice().sort((a, b) => brk(a, p) - brk(b, p) || order(a) - order(b));
-            c = colOf.get(p) + (sorted.indexOf(id) - (sorted.length - 1) / 2);
-          } else c = colOf.get(p);
-        } else if (ps.length > 1) {
-          let sum = 0, w = 0;
-          for (const p of ps) { const wt = kindOf(p) === 'diamond' ? 2 : 1; sum += colOf.get(p) * wt; w += wt; }
-          c = Math.round((sum / w) * 2) / 2;
-        }
-        colOf.set(id, c);
-      }
-      // colisões: no mínimo uma coluna entre vizinhos da mesma linha
-      row.sort((a, b) => colOf.get(a) - colOf.get(b) || order(a) - order(b));
-      for (let i = 1; i < row.length; i++) if (colOf.get(row[i]) - colOf.get(row[i - 1]) < 1) colOf.set(row[i], colOf.get(row[i - 1]) + 1);
-    }
-  }
-  const colMin = useCols ? Math.min(0, ...colOf.values()) : 0, colMax = useCols ? Math.max(0, ...colOf.values()) : 0;
-  const slotsIn = (l) => (useCols ? Math.round(colMax - colMin) + 1 : Math.max(1, ...Array.from({ length: maxRank + 1 }, (_, r) => (cells.get(key(l, r)) || []).length)));
+  const slotsIn = (l) => Math.max(1, ...Array.from({ length: maxRank + 1 }, (_, r) => (cells.get(key(l, r)) || []).length));
   // seções do Processo empilhadas: espaço para o título de cada seção
   // Início entra na primeira etapa e Fim na última (ficam dentro do bloco, sem a seta cruzar o título)
   const ownSection = (id) => sections.find((s) => s.nodes.includes(id))?.id || '';
@@ -249,12 +216,11 @@ export function autoLayout(code, opts = {}) {
     const k = kindOf(id), c = g.classes.get(id) || new Set();
     if (k === 'note') return { shape: 'rounded', fill: P.noteFill, stroke: P.noteStroke, dashed: true, color: '#555555' };
     if (k === 'diamond') return { shape: 'diamond', fill: P.decisionFill, stroke: P.decisionStroke };
-    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: c.has('duvida') ? '#FFF8E6' : P.fill, stroke: c.has('duvida') ? '#C98A00' : P.stroke, dashed: c.has('duvida') };   // entrada/saída de dados
-    if (k === 'terminator' && c.has('duvida')) return { shape: 'terminator', fill: '#FFFBF0', stroke: '#C98A00', dashed: true, color: '#6B4E00', fontSize: 12 };   // "Não documentado": encerramento discreto
+    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: P.fill, stroke: P.stroke };   // entrada/saída de dados
     if (k === 'terminator') return { shape: 'terminator', fill: P.terminalFill, stroke: P.terminalStroke };
     if (c.has('duvida')) return { shape: 'rect', fill: '#FFF8E6', stroke: '#C98A00', dashed: true, color: '#6B4E00' };   // ponto com dúvida no documento
-    if (c.has('erro')) return { shape: P.rounded ? 'rounded' : 'rect', fill: P.errorFill, stroke: P.errorStroke };
-    return { shape: P.rounded ? 'rounded' : 'rect', fill: P.fill, stroke: P.stroke };
+    if (c.has('erro')) return { shape: 'rect', fill: P.errorFill, stroke: P.errorStroke };
+    return { shape: 'rect', fill: P.fill, stroke: P.stroke };
   };
   // irmãos de uma decisão: "Não" à esquerda e "Sim" à direita (como no gabarito)
   const branchRank = (id) => {
@@ -291,11 +257,6 @@ export function autoLayout(code, opts = {}) {
     const inner = laneSize[l] - head - (oneSide ? noteSpace(l) : 2 * noteSpace(l));
     const startCross = laneStart[l] + head + (oneSide ? 0 : noteSpace(l)) + inner / 2 - span / 2;
     const cMain = mainPos[r] + rowMain(r) / 2;
-    if (useCols) {
-      const base = laneStart[l] + PAD + noteSpace(l);
-      list.forEach((id) => place(id, base + (colOf.get(id) - colMin) * cellCross + (cellCross - GAP_CROSS) / 2, cMain));
-      continue;
-    }
     list.forEach((id, i) => place(id, startCross + i * cellCross + (cellCross - GAP_CROSS) / 2, cMain));
   }
   // notas: ao lado do passo, na mesma linha
@@ -318,7 +279,7 @@ export function autoLayout(code, opts = {}) {
       const box = col >= 0 ? { x: OX + laneStart[col] + 8, y: OY + a0, w: laneSize[col] - 16, h: a1 - a0 }
         : LR ? { x: OX + a0, y: lo, w: a1 - a0, h: hi - lo } : { x: lo, y: OY + a0, w: hi - lo, h: a1 - a0 };
       for (const k of Object.keys(box)) box[k] = Math.round(box[k]);
-      secs.push({ id: 'SEC_' + sg.id, shape: 'container', band: true, head: SEC_HEAD, ...box, text: decode(sg.label), fill: P.sectionFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14, titleChip: true });
+      secs.push({ id: 'SEC_' + sg.id, shape: 'container', band: true, head: SEC_HEAD, ...box, text: decode(sg.label), fill: P.sectionFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14 });
     }
     nodes.unshift(...secs);
   }
@@ -402,30 +363,6 @@ export function autoLayout(code, opts = {}) {
   };
   const corridorUse = new Map();
   const routeCache = new Map();
-  // corredor externo dos retornos (fluxo em colunas): esquerda para "Não"/coluna da esquerda, direita para "Sim"
-  const loopUse = { left: 0, right: 0 };
-  let connCount = 0;
-  const CONNECTOR_SPAN = opts.connectorSpan || 1100;   // px: retornos maiores que isso usam conectores
-  const outerLoop = (e, A, B) => {
-    const k = `${e.from}>${e.to}:loop`;
-    if (routeCache.has(k)) return routeCache.get(k);
-    const ay = Math.round(A.y + A.h / 2), by = Math.round(B.y + B.h / 2);
-    const y1 = Math.min(A.y, B.y) - 4, y2 = Math.max(A.y + A.h, B.y + B.h) + 4;
-    const span = [...pos.values()].filter((n) => n.y + n.h > y1 && n.y < y2);
-    const pref = kindOf(e.from) === 'diamond' ? (/^sim\b/i.test(e.label) ? ['right', 'left'] : ['left', 'right'])
-      : (A.x + A.w / 2 <= B.x + B.w / 2 ? ['left', 'right'] : ['right', 'left']);
-    let res = null;
-    for (const side of pref) {
-      const x = side === 'left' ? Math.round(Math.min(...span.map((n) => n.x)) - 24 - loopUse.left * 12) : Math.round(Math.max(...span.map((n) => n.x + n.w)) + 24 + loopUse.right * 12);
-      const ax = side === 'left' ? A.x : A.x + A.w, bx = side === 'left' ? B.x : B.x + B.w;
-      if (hitsAny([[ax, ay, x, ay], [x, ay, x, by], [x, by, bx, by]], A, B)) continue;
-      loopUse[side]++;
-      res = { fromPort: side === 'left' ? sides.a : sides.b, toPort: side === 'left' ? sides.a : sides.b, points: [[x, ay], [x, by]] };
-      break;
-    }
-    routeCache.set(k, res);
-    return res;
-  };
   const laneRouteOnce = (e, A, B, laneNodeId, mode) => {
     const k = `${e.from}>${e.to}:${mode}`;
     if (!routeCache.has(k)) { sourceId = e.from; routeCache.set(k, laneRoute(A, B, laneNodeId, mode)); }
@@ -454,25 +391,6 @@ export function autoLayout(code, opts = {}) {
     const dCross = LR ? bc[1] - ac[1] : bc[0] - ac[0];
     const crossSide = dCross > 0 ? sides.b : sides.a;
     let fromPort, toPort, points;
-    // CONECTORES: retorno muito longo (atravessaria boa parte do diagrama) vira um par de círculos com a mesma letra
-    // — "vai para (A)" ao lado da origem e "(A) continua aqui" ao lado do destino — em vez de uma linha enorme
-    if (useCols && back.has(e) && Math.abs(dMain) > CONNECTOR_SPAN) {
-      const letter = String.fromCharCode(65 + (connCount % 26));
-      let side = kindOf(e.from) === 'diamond' && /^sim\b/i.test(e.label) ? 'right' : 'left';
-      if (side === 'left' && Math.min(A.x, B.x) - 64 < OX + 4) side = 'right';   // sem espaço à esquerda
-      const mk = (N, suffix) => ({ id: `CN${letter}${suffix}`, shape: 'circle', w: 30, h: 30, text: letter, fill: '#ffffff', stroke: P.line, color: P.color, fontSize: 12.5, bold: true,
-        x: Math.round(side === 'left' ? N.x - 64 : N.x + N.w + 34), y: Math.round(N.y + N.h / 2 - 15) });
-      const c1 = mk(A, '1'), c2 = mk(B, '2');
-      const free = (c) => ![...pos.values()].some((n) => c.x < n.x + n.w + 6 && n.x < c.x + c.w + 6 && c.y < n.y + n.h + 6 && n.y < c.y + c.h + 6);
-      if (free(c1) && free(c2)) {
-        connCount++;
-        nodes.push(c1, c2);
-        const ps = side === 'left' ? sides.a : sides.b, pt = side === 'left' ? sides.b : sides.a;
-        edges.push({ id: 'e' + (i + 1), from: e.from, to: c1.id, fromPort: ps, toPort: pt, label: decode(e.label), kind: 'orth', dashed: true, arrowEnd: true, stroke: P.line, role: 'conector' });
-        edges.push({ id: 'e' + (i + 1) + 'b', from: c2.id, to: e.to, fromPort: pt, toPort: ps, label: '', kind: 'orth', dashed: true, arrowEnd: true, stroke: P.line, role: 'conector' });
-        return;
-      }
-    }
     if (columns && laneOf.get(e.from) !== laneOf.get(e.to)) {
       // próxima etapa na coluna ao lado: sai pela direita, sobe pelo corredor entre as colunas e entra pela esquerda
       fromPort = dCross > 0 ? sides.b : sides.a; toPort = dCross > 0 ? sides.a : sides.b;
@@ -483,10 +401,6 @@ export function autoLayout(code, opts = {}) {
       // raias: passagem para outra raia mais abaixo — sai pela lateral, cruza a borda da raia em 90°, desce pelo
       // corredor livre da raia de destino e entra pela LATERAL do bloco (sem atravessar textos)
       ({ fromPort, toPort, points } = laneRouteOnce(e, A, B, e.to, 'cross'));
-    } else if (useCols && (back.has(e) || dMain < -4) && outerLoop(e, A, B)) {
-      // RETORNO (laço): sobe por um corredor externo, por fora de todos os blocos, e entra pela lateral do destino —
-      // nunca pela mesma entrada do fluxo principal nem atravessando o caminho de ida
-      ({ fromPort, toPort, points } = outerLoop(e, A, B));
     } else if (back.has(e) || dMain < -4) {
       // retorno: na mesma coluna faz um "U" pela lateral; em outra coluna sai de lado e entra por baixo
       if (Math.abs(dCross) < 4) { fromPort = sides.a; toPort = sides.a; } else { fromPort = crossSide; toPort = sides.fwd; }
@@ -525,7 +439,7 @@ export function autoLayout(code, opts = {}) {
     else if (A.shape === 'diamond' || useLanes) { fromPort = crossSide; toPort = sides.bwd; }     // ramo: sai pela ponta lateral
     else { fromPort = sides.fwd; toPort = sides.bwd; }                                           // converge: desce e entra por cima
     (usedSide.get(e.from) || usedSide.set(e.from, new Set()).get(e.from)).add(fromPort);
-    edges.push({ id: 'e' + (i + 1), from: e.from, to: e.to, fromPort, toPort, ...(points ? { points } : {}), label: decode(e.label), kind: 'orth', dashed: e.type.startsWith('-.') || back.has(e), arrowEnd: true, stroke: P.line, width: P.lineWidth || 1.5, ...(back.has(e) ? { role: 'retorno' } : {}) });   // retorno = tracejado
+    edges.push({ id: 'e' + (i + 1), from: e.from, to: e.to, fromPort, toPort, ...(points ? { points } : {}), label: decode(e.label), kind: 'orth', dashed: e.type.startsWith('-.'), arrowEnd: true, stroke: P.line });
   });
   let k = 0;
   for (const [n, s] of noteOf) {

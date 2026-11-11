@@ -16,54 +16,6 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
-## Novidades da versão 4.2: fluxograma vertical como padrão
-
-### Onde os erros nasciam (e o que foi corrigido em cada componente)
-| Componente | Causa encontrada | Correção |
-|---|---|---|
-| Escolha do layout (`lib/pipeline.js`) | Seções e preparos paralelos geravam **raias** automaticamente, e o Funcional sem responsáveis criava uma coluna por título. | Raias **só com responsáveis ou departamentos**. Sem eles, o fluxo é sempre vertical, e o Funcional pedido à mão também vira vertical por etapas, com aviso. |
-| Extração das seções (`lib/heuristic.js`) | Seções informativas ("Comparativo entre Wi-Fi e cabo") viravam passos. | `INFO_SECTION`: comparativos, vantagens e diferenças ficam fora do fluxo e não contam como omissão. |
-| Construção das decisões (`alternativeSections`) | "Você pode escolher entre Wi-Fi ou Ethernet" criava um losango, e os títulos "Método X" criavam **outro** equivalente. | A decisão que já existe no documento é reaproveitada, e o validador remove decisões redundantes em sequência. |
-| Interpretação das condições (`lib/interpret.js`) | "Se a internet não funcionar, reinicie… / Se o problema continuar, …" deixava o Sim de "Internet funciona?" cair em "Problema continua?". | O "problema continuar" vira a saída do laço de nova tentativa, e o Sim encerra com sucesso. |
-| Texto (`lib/shorten.js`) | "O computador faz…" virava a ação "Fazer…", e substantivos compostos eram cortados ("na barra" de tarefas). | Eventos de sistema mantêm o sujeito ("Computador faz conexão automaticamente"), "Clique sobre o nome da rede X" vira "Selecionar rede X" e complementos cortados saem inteiros. |
-| Validação (`lib/validate.js`) | Textos sem sentido eram só avisados. | O **trecho original do PDF** aparece no bloco e no aviso, e cada decisão ganha uma estrutura com tipo, alternativas, destinos, origem no PDF e confiança (aba Análise). |
-| Visual (`visual-model.mjs`, estilos) | Visual cinza, sem diferenciar caminhos nem marcar convergências. | Novo estilo **Profissional claro** (padrão): caixas brancas arredondadas, bordas discretas, decisões amarelo-claro, Sim/Não coloridos, ponto nas convergências e setas finas. |
-| Documentos com vários procedimentos | Tudo virava um único fluxograma. | Procedimentos independentes ("Como cadastrar…", "Como emitir…") geram **fluxogramas separados**, salvos no histórico. |
-
-### Como fica o resultado
-- **Fluxo vertical:** Início no topo e Fim embaixo. Decisões abrem ramos para os lados (Não à esquerda, Sim à direita), que voltam ao eixo central. Retornos ficam tracejados pela lateral, e convergências são marcadas com um ponto.
-- **Mermaid:** o código usa `flowchart TD` (o mesmo que `TB`). Subgraphs só aparecem para etapas empilhadas na vertical ou para raias de responsáveis.
-
-## Novidades da versão 4.1: decisões com sentido, métodos alternativos e setas organizadas
-
-### Lógica das decisões
-- **Perguntas sempre afirmativas.** "Se a internet não funcionar, reinicie…" vira "Internet funciona?" com Não → reiniciar; "senha incorreta" vira "Senha está correta?"; "não tenha porta Ethernet" vira "Computador tem porta Ethernet?". Assim o Sim e o Não nunca ficam invertidos.
-- **Validação semântica (camada 4).** Antes de exibir, cada losango é conferido:
-  - **respostas invertidas** são corrigidas: correção ou diagnóstico no "Sim" de uma pergunta afirmativa, ou no "Não" de uma pergunta de falha como "Ocorreu erro?";
-  - **losangos inúteis**, com todas as saídas no mesmo passo, são removidos;
-  - nada pode sair do Fim nem entrar no Início.
-- **Só decisões com função real.**
-  - "Verifique se X" sem consequência descrita no documento vira um **passo** "Verificar X", e não um losango.
-  - Frases de **resultado** ("a conexão está funcionando") encerram o caminho com esse resultado, em vez de virar a ação "Estar funcionando".
-- **Caminhos não documentados, de forma inteligente.**
-  - Antes de marcar um caminho como faltante, o gerador procura a explicação no resto do documento. Exemplo: o Não de "Página carrega?" segue para a seção "Solução de problemas", e a condição repetida "Se a internet não funcionar" não vira outro losango.
-  - Se não houver explicação, o caminho termina num encerramento discreto e tracejado, **"Não documentado"**, com aviso para complementar.
-- **Retornos corretos.** "Reinicie o roteador" não é mais confundido com repetir "Conectar cabo no roteador": um retorno só acontece quando o texto pede a repetição ("novamente", "reinicie a instalação").
-
-### Estrutura do processo
-- **Métodos alternativos.** Seções como "Conexão por Wi-Fi" e "Conexão por cabo Ethernet", ou "Opção 1" e "Opção 2", viram **uma decisão de escolha** ("Qual tipo de conexão?"). Cada caminho é desenvolvido separado e todos se reúnem na primeira etapa comum, como a verificação da conexão. Etapas sequenciais, métodos alternativos e preparos paralelos são tratados de formas diferentes.
-- **Pré-condições.** "Caso o computador não tenha porta Ethernet, use um adaptador" vai para **antes** de "Conectar o cabo na porta", que depende dela.
-- **Layout automático.** Documentos com métodos alternativos usam o fluxograma vertical com os caminhos lado a lado, sem forçar colunas.
-
-### Setas e organização visual
-- **Colunas estáveis.** Cada caminho mantém a sua coluna: os ramos de uma decisão abrem para os lados e voltam a se encontrar no centro. Antes, cada linha era recentralizada, o que gerava setas diagonais e longas.
-- **Retornos (laços):**
-  - são **tracejados**, para diferenciar de caminhos de decisão;
-  - sobem por um corredor externo, por fora dos blocos, e entram pela lateral do destino;
-  - os muito longos viram um par de **conectores** (círculos com a mesma letra).
-- **Títulos de etapa** viram uma etiqueta por cima das setas, então a seta que entra na etapa não risca mais o texto.
-- **Textos sem sentido** (por exemplo "Car faz") ou cortados são sinalizados como incertos, com contorno laranja e aviso, sem inventar outra descrição.
-
 ## Novidades da versão 4.0: gerador inteligente em camadas
 
 ### Arquitetura (as 5 camadas)
@@ -142,7 +94,7 @@ O motivo da escolha aparece na Análise. Os tipos escolhidos à mão continuam f
 npm test                      (ou: node tests/run.js && node tests/cenarios.js)
 ```
 
-`tests/cenarios/` traz 11 documentos com estruturas diferentes (incluindo `internet_conexao.txt` e `internet_metodos.txt`, com métodos alternativos e perguntas negativas, e `processos_independentes.txt`), e `tests/cenarios.js` confere a lógica e o desenho de cada um. `exemplos/formatar_windows.pdf` é o caso da formatação do Windows em PDF, para testar pela interface.
+`tests/cenarios/` traz 8 documentos com estruturas diferentes, e `tests/cenarios.js` confere a lógica e o desenho de cada um. `exemplos/formatar_windows.pdf` é o caso da formatação do Windows em PDF, para testar pela interface.
 
 ## Os 3 tipos de fluxograma
 
@@ -319,11 +271,7 @@ As chaves ficam somente neste computador, no arquivo `config.json`.
 - **Contradições:** o gerador não identifica contradições entre trechos distantes do documento. Ele marca como dúvida apenas condições sem consequência e instruções vagas.
 - **Retornos deduzidos:** quando o documento não diz o que fazer se uma verificação falhar, o caminho "Não" volta para o passo verificado (refazer). Isso é sempre avisado na Análise.
 - **Conectores de página:** documentos muito extensos geram um diagrama longo (as etapas aparecem em blocos com título), mas não são divididos em várias páginas com conectores.
-- **Cruzamentos de setas:** a validação visual reconhece sobreposição de caixas e setas sobre caixas. Cruzamentos entre duas setas foram reduzidos com colunas estáveis, corredores externos para os retornos e conectores, mas ainda podem acontecer em fluxos com muitos retornos.
-- **Processos independentes:** só são separados quando o PDF é uma coleção de procedimentos ("Como…", "Procedimento…") sem uma etapa comum depois. Ao usar "Gerar novamente" num deles, apenas o primeiro processo é refeito.
-- **Funcional sem responsáveis:** gera o fluxo vertical por etapas, em vez de raias por seção. Para ver raias, o documento precisa indicar quem faz cada passo.
-- **Métodos alternativos:** são reconhecidos pelos títulos das seções ("Conexão por X" / "Conexão por Y", "Opção 1/2", "Método A/B"). Alternativas descritas só dentro de um parágrafo continuam virando decisão apenas quando o texto usa "se" ou "caso".
-- **Semântica das respostas:** a correção de respostas invertidas usa o vocabulário dos blocos (corrigir, verificar, reiniciar, contatar…). Quando o destino é neutro, a decisão é mantida como veio do documento.
+- **Cruzamentos de setas:** a validação visual reconhece sobreposição de caixas e setas sobre caixas, mas cruzamentos entre duas setas ainda podem acontecer em fluxos com muitos retornos.
 - **Arquivos sem texto:** PDFs escaneados (imagem) continuam sem suporte, porque não há OCR.
 
 ## Problemas comuns
@@ -359,7 +307,7 @@ public/graph.mjs    análise do fluxograma: qualidade, decisões, nível Resumid
 public/             interface (index.html, style.css, app.js) + vendor/
 tests/run.js        testes de unidade (npm test)
 tests/cenarios.js   8 cenários de ponta a ponta (tests/cenarios/*.txt)
-exemplos/           PDFs de exemplo (montar mesa, jogos no PS5, chamados, Roblox, formatação do Windows, conexão à internet)
+exemplos/           PDFs de exemplo (montar mesa, jogos no PS5, chamados, Roblox, formatação do Windows)
 exemplos-modelo/    fluxogramas-modelo (.mmd) usados como referência de formato + imagens originais
 ```
 

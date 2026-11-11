@@ -1,6 +1,6 @@
 {
   "name": "fluxograma-pdf",
-  "version": "4.2.0",
+  "version": "4.0.0",
   "description": "Gerador Inteligente de Fluxogramas (Mermaid) a partir de PDFs — roda localmente",
   "main": "server.js",
   "scripts": {

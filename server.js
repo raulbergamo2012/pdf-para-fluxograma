@@ -18,7 +18,7 @@ const { sanitizeMermaid } = require('./lib/sanitize');
 const { heuristicMermaid, TYPES } = require('./lib/heuristic');
 const { mergeAlternativeSteps } = require('./lib/coherence');
 const { fixLanes } = require('./lib/lanes');
-const { chooseType, finalize, summary, splitProcesses } = require('./lib/pipeline');
+const { chooseType, finalize, summary } = require('./lib/pipeline');
 
 const ROOT = __dirname;
 const PUBLIC = path.join(ROOT, 'public');
@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
   ollamaUrl: 'http://localhost:11434',
   ollamaModel: 'llama3.1',
   direction: 'TD',
-  visualStyle: 'profissional', // profissional (claro, padrão) | classico (cinza) | azul (corporativo) | moderno (colorido)
+  visualStyle: 'classico',     // classico (cinza) | azul (corporativo) | moderno (colorido)
   maxChars: 0,
   urlAuthToken: '',            // token opcional p/ importar URLs do Confluence
 };
@@ -187,22 +187,7 @@ function htmlToText(html) {
 }
 
 // ---------------------------------------------------------------- API
-/**
- * PROCESSOS INDEPENDENTES no mesmo PDF ("Como instalar…", "Como desinstalar…"): não são unidos artificialmente —
- * cada um vira um fluxograma separado (o app salva cada um no histórico).
- */
 async function apiGenerate(body) {
-  const parts = body.noSplit ? [] : splitProcesses(String(body.text || ''));
-  if (parts.length >= 2) {
-    const results = [];
-    for (const p of parts) results.push({ ...(await apiGenerateOne({ ...body, text: p.text, title: p.title, noSplit: true })), title: p.title });
-    const [first, ...rest] = results;
-    return { ...first, parts: rest, splitNote: `O documento descreve ${parts.length} processos independentes; foi gerado um fluxograma para cada um (os demais estão no histórico).` };
-  }
-  return apiGenerateOne(body);
-}
-
-async function apiGenerateOne(body) {
   const started = Date.now();
   const cfg = loadConfig();
   const text = String(body.text || '').trim();
@@ -211,27 +196,20 @@ async function apiGenerateOne(body) {
   // processo · raias · decisao · auto (o gerador escolhe o layout pela estrutura do documento)
   const auto = body.type === 'auto' || !body.type;
   const pick = auto ? chooseType(text, title) : { type: TYPES.includes(body.type) ? body.type : 'decisao', natural: false, reason: '' };
-  // Funcional pedido à mão, mas o documento não tem responsáveis/departamentos: raias não se justificam pelo
-  // conteúdo — gera o fluxo VERTICAL por etapas e avisa (seções não viram colunas)
-  let laneFallback = '';
-  if (pick.type === 'raias' && /%%\s*raias:\s*etapas/.test(heuristicMermaid(text, title, 'TD', 'raias'))) {
-    Object.assign(pick, { type: 'decisao', natural: true, reason: 'sem responsáveis no documento: fluxo vertical por etapas' });
-    laneFallback = 'O documento não identifica responsáveis ou departamentos diferentes; por isso o fluxograma foi gerado na vertical, com as etapas em sequência, em vez de raias por seção.';
-  }
   const type = pick.type;
   if (text.length < 20) throw new Error('Não foi possível extrair texto suficiente do documento. Se o PDF for escaneado (imagem), exporte-o novamente com texto selecionável.');
 
   const status = body.provider === 'regras' ? { provider: 'regras', model: '' } : await detectStatus(cfg);
   // camadas 3 e 4: todo código (Regras ou IA) passa pelo modelo estruturado e pela validação antes de ir à tela
   const done = (r) => {
-    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length), sources: r.sources });
-    const issues = [...(laneFallback ? [{ level: 'interpretação', message: laneFallback }] : []), ...(r.notes || []).map((m) => ({ level: 'interpretação', message: m })), ...fin.issues];
-    return { ...r, sources: undefined, code: fin.code, type, auto, natural: !!pick.natural, autoReason: pick.reason, issues, structure: summary(fin.model), notes: undefined, durationMs: Date.now() - started };
+    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length) });
+    const issues = [...(r.notes || []).map((m) => ({ level: 'interpretação', message: m })), ...fin.issues];
+    return { ...r, code: fin.code, type, auto, autoReason: pick.reason, issues, structure: summary(fin.model), notes: undefined, durationMs: Date.now() - started };
   };
   const viaRegras = (warning) => {
     const report = {};
     const code = heuristicMermaid(text, title, direction, type, { natural: pick.natural, report });
-    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal, sources: report.sources });
+    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal });
   };
 
   if (status.provider === 'regras') {
