@@ -16,6 +16,21 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.2: correções do teste "Roblox pelo celular" (Funcional)
+
+| Problema | Causa | Correção |
+|---|---|---|
+| A **Etapa 3** sumia: os passos dela iam para a Etapa 2 | O PDF quebra linhas pela largura da página; quando o último passo da Etapa 2 não terminava com ponto, a linha "Etapa 3: …" era colada nele como continuação | Linha "Etapa/Passo/Fase N" nunca é continuação da anterior (`lib/heuristic.js`, `parseDocument`) |
+| "Importante: colocar idade real…", "Não usar nome real…", "Anotar senha…" viravam atividades | A fusão de dicas só valia para o Processo | No Funcional, dica/aviso vira observação dentro do bloco relacionado: data de nascimento, nome de usuário, senha |
+| "Acessar loja de aplicativos" seguido de "Abrir loja de aplicativos" | A remoção de duplicados só comparava o texto exato | Passos seguidos com o mesmo objeto e verbo de navegação (acessar/abrir/entrar/ir até) viram um só (`lib/validate.js`) |
+| "Informar gênero: Selecione estilo inicial do avatar" | O rótulo "Gênero:" com ação em maiúscula não era separado | Vira "Selecionar estilo inicial do avatar" (`lib/shorten.js`) |
+| "Começar jogar" / "Comecer jogar" | "comece" virava "comecer", e o "a" antes do verbo era tratado como artigo | "Começar a jogar" |
+| "…ou tocar no ícone" (ícone de quê?) | Corte em 7 palavras | Substantivos de interface (ícone, botão, opção, menu, aba…) mantêm o complemento: "tocar no ícone de lupa"; a 2ª ação depois de "ou/e" também vai para o infinitivo |
+| "Verificar desenvolvedor é Roblox Corporation" | O "se" e o verbo eram retirados | "Verificar se desenvolvedor é Roblox Corporation" |
+| Observação encostando nas pontas do bloco inclinado | O texto usava a largura toda do paralelogramo | O texto fica na parte reta do bloco (`public/visual-model.mjs`) |
+
+Testes novos: `roblox_celular` (documento recriado a partir do fluxograma do teste) e `loja_redundante`.
+
 ## Novidades da versão 4.0.1: Fluxograma Funcional mais claro
 
 Ajustes feitos só no que afeta o **Funcional (raias)**. Os outros tipos continuam como na 4.0.

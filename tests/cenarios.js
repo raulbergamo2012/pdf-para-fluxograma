@@ -152,7 +152,7 @@ async function scenario(name, label, fn) {
     assert(r.has(vert, r.byLabel(/^Instalação inicia/)), 'etiqueta → instalação');
     const net = r.byLabel(/conectado à internet\?/);
     assert(net && !r.has(net, r.byLabel(/^Instalação inicia/), 'Não'), 'Não da internet não inventa retorno');
-    assert(r.byLabel(/^Verificar console em Modo de Repouso/), '"Certifique-se" sem consequência vira passo');
+    assert(r.byLabel(/^Verificar se console está em Modo de Repouso/), '"Certifique-se" sem consequência vira passo');
     const m = laneLayout(r), P = (re) => m.nodes.find((n) => re.test(n.text || ''));
     const d = P(/Qual instalação/), heads = [/^Ligar console/, /^Acessar PlayStation/, /^Abrir aplicativo/].map(P);
     assert(heads.every((n) => Math.abs(n.y + n.h / 2 - (d.y + d.h / 2)) < 4), 'ramos começam na altura do losango (sem subir)');
@@ -174,6 +174,26 @@ async function scenario(name, label, fn) {
     const code = heuristicMermaid(text, 'a', 'TD', 'raias', { report: {} });
     const fin = finalize(code, { text, type: 'raias' });
     assert(!fin.issues.some((i) => /aparece 2 vezes/.test(i.message)), 'sem aviso de duplicado entre raias');
+  });
+  await scenario('roblox_celular', 'Funcional: etapas, dicas e textos (teste do usuário)', () => {
+    const r = generate('roblox_celular', 'raias'); common(r);
+    const titles = r.m.groups.map((g) => g.title);
+    assert(titles.some((t) => /^Etapa 3/.test(t)), '"Etapa 3" não some quando a linha anterior não termina com ponto: ' + titles.join(' | '));
+    assert(!r.byLabel(/^Etapa 3/), 'título da etapa não vira texto de bloco');
+    assert(/Não usar seu nome real/.test(r.byLabel(/^Informar nome de usuário/).label), 'dica "não usar nome real" dentro do bloco do nome');
+    assert(/Anotar senha/.test(r.byLabel(/^Informar senha/).label), 'dica "anotar senha" dentro do bloco da senha');
+    assert(/idade real/.test(r.byLabel(/^Informar data de nascimento/).label), 'aviso da idade dentro do bloco da data');
+    assert(![...r.m.nodes.values()].some((n) => /^(Importante|Não usar|Anotar)/.test(n.label)), 'nenhuma dica como atividade');
+    assert(r.byLabel(/^Selecionar estilo inicial do avatar$/), '"Gênero: Selecione…" vira "Selecionar…"');
+    assert(r.byLabel(/^Começar a jogar$/), '"Comece a jogar" → "Começar a jogar"');
+    assert(r.byLabel(/tocar no ícone de lupa$/), 'ícone com o complemento e 2º verbo no infinitivo');
+    assert(r.byLabel(/^Verificar se desenvolvedor é Roblox/), '"Verificar se…" com o "se"');
+    assert.strictEqual([...r.m.nodes.values()].filter((n) => /loja de aplicativos/.test(n.label)).length, 1, 'acessar/abrir loja = um passo');
+  });
+  await scenario('loja_redundante', 'Acessar loja + Abrir loja em sequência viram um passo', () => {
+    const code = '%% tipo: raias\nflowchart TD\n  subgraph R1["A"]\n    INICIO(["Início"])\n    P1["Acessar loja de aplicativos"]\n    P2["Abrir loja de aplicativos"]\n    P3["Pesquisar por Roblox"]\n    FIM(["Fim"])\n  end\n  INICIO --> P1\n  P1 --> P2\n  P2 --> P3\n  P3 --> FIM';
+    const fin = finalize(code, { text: '', type: 'raias' });
+    assert(!/Abrir loja/.test(fin.code) && /P1 --> P3/.test(fin.code.replace(/\s+/g, ' ')), fin.code);
   });
   await scenario('textos', 'complemento do substantivo não fica cortado', () => {
     const { shortenAction } = require('../lib/shorten');

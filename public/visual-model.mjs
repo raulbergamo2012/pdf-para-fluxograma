@@ -38,7 +38,9 @@ export const SHAPES = {
     box: (x, y, w, h) => ({ x: x + w * 0.18, y: y + h * 0.18, w: w * 0.64, h: h * 0.64 }) },
   parallelogram: { name: 'Dados (entrada/saída)', w: 120, h: 60, mermaid: ['[/', '/]'],
     draw: (x, y, w, h) => { const o = Math.min(w * 0.2, 20); return poly([[x + o, y], [x + w, y], [x + w - o, y + h], [x, y + h]]); },
-    ports: (x, y, w, h) => { const o = Math.min(w * 0.2, 20); return { top: [x + w / 2, y], right: [x + w - o / 2, y + h / 2], bottom: [x + w / 2, y + h], left: [x + o / 2, y + h / 2] }; } },
+    ports: (x, y, w, h) => { const o = Math.min(w * 0.2, 20); return { top: [x + w / 2, y], right: [x + w - o / 2, y + h / 2], bottom: [x + w / 2, y + h], left: [x + o / 2, y + h / 2] }; },
+    // texto dentro da parte reta (não encosta nas pontas inclinadas)
+    box: (x, y, w, h) => { const o = Math.min(w * 0.2, 20); return { x: x + o * 0.75, y, w: w - o * 1.5, h }; } },
   hexagon: { name: 'Preparação (hexágono)', w: 120, h: 64, mermaid: ['{{', '}}'],
     draw: (x, y, w, h) => { const o = Math.min(w * 0.22, 20); return poly([[x + o, y], [x + w - o, y], [x + w, y + h / 2], [x + w - o, y + h], [x + o, y + h], [x, y + h / 2]]); } },
   triangle: { name: 'Triângulo', w: 70, h: 80,
