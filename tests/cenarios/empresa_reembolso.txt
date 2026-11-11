@@ -1,0 +1,9 @@
+Processo de solicitação de reembolso
+1. O colaborador preenche o formulário de reembolso e anexa os comprovantes.
+2. O gestor analisa a solicitação.
+3. Se o gestor aprovar, a solicitação segue para o financeiro.
+4. Se o gestor reprovar, o colaborador é notificado e corrige a solicitação.
+5. O financeiro confere os comprovantes.
+6. Caso os comprovantes estejam corretos, o financeiro realiza o pagamento.
+7. Caso contrário, o financeiro devolve a solicitação ao colaborador.
+8. O colaborador recebe a confirmação do pagamento.

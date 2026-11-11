@@ -1,0 +1,38 @@
+%% Modelo 3 — Rotina do dia
+%% Padrão: cada losango abre dois ramos curtos (um de cada lado) que voltam juntos ao próximo passo da coluna central.
+flowchart TD
+    INICIO(["Início"])
+    P1["Acordar"]
+    P2["Tomar café"]
+    D1{"Dia de sol?"}
+    P3["Ver TV"]
+    P4["Ir à praia"]
+    P5["Almoçar"]
+    D2{"Cansado?"}
+    P6["Cochilar"]
+    P7["Jogar futebol"]
+    P8["Passear"]
+    P9["Jantar"]
+    P10["Dormir"]
+    FIM(["Fim"])
+
+    INICIO --> P1
+    P1 --> P2
+    P2 --> D1
+    D1 -->|Não| P3
+    D1 -->|Sim| P4
+    P3 --> P5
+    P4 --> P5
+    P5 --> D2
+    D2 -->|Sim| P6
+    D2 -->|Não| P7
+    P6 --> P8
+    P7 --> P8
+    P8 --> P9
+    P9 --> P10
+    P10 --> FIM
+
+    classDef inicioFim fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef decisao fill:#FFF8E1,stroke:#F9A825,stroke-width:2px,color:#5D4037
+    class INICIO,FIM inicioFim
+    class D1,D2 decisao

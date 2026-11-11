@@ -1,0 +1,31 @@
+Implantação de um novo ERP
+Fase 1: Planejamento
+1. Defina o escopo do projeto.
+2. Monte a equipe do projeto.
+3. Elabore o cronograma.
+4. Aprove o orçamento com a diretoria.
+Fase 2: Levantamento
+1. Entreviste as áreas usuárias.
+2. Documente os processos atuais.
+3. Identifique as integrações necessárias.
+4. Valide o levantamento com os gestores.
+Fase 3: Configuração
+1. Instale o ERP no servidor de homologação.
+2. Cadastre os usuários e perfis.
+3. Configure os módulos financeiro e de estoque.
+4. Importe os dados mestres.
+Fase 4: Testes
+1. Execute os testes integrados.
+2. Registre os erros encontrados.
+3. Corrija os erros registrados.
+4. Se todos os testes forem aprovados, obtenha o aceite formal das áreas.
+5. Caso contrário, execute os testes integrados novamente.
+Fase 5: Treinamento
+1. Prepare o material de treinamento.
+2. Treine os usuários-chave.
+3. Aplique a avaliação de aprendizado.
+Fase 6: Entrada em produção
+1. Migre os dados finais.
+2. Libere o acesso aos usuários.
+3. Acompanhe a operação na primeira semana.
+4. Encerre o projeto com o relatório final.

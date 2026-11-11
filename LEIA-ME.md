@@ -1,0 +1,366 @@
+# PDF para Fluxograma
+
+Aplicação local que transforma documentações (PDFs do Confluence, manuais, procedimentos) em fluxogramas Mermaid **com uma seleção**. Ela identifica atividades, decisões, caminhos de SIM e NÃO, retornos, início e fim.
+
+## Como usar
+
+1. **Instale o Node.js uma única vez** (versão LTS): https://nodejs.org/pt
+2. Descompacte esta pasta em qualquer lugar.
+3. Dê **dois cliques** em:
+   - **Windows:** `INICIAR.bat`
+   - **macOS:** `iniciar.command` (na 1ª vez: botão direito → Abrir)
+   - **Linux:** `./iniciar.sh`
+4. O navegador abre sozinho em `http://localhost:3210`. Escolha o **tipo de fluxograma** (**Automático**, que é o recomendado, ou Processo, Funcional ou Decisão) e clique em **Selecionar PDF e gerar**, ou arraste o arquivo para o cartão. O resto é automático.
+
+> **No VS Code:** abra a pasta e pressione **F5** ("▶ Iniciar Fluxograma IA"), ou rode `npm start`.
+
+Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
+
+## Novidades da versão 4.2: fluxograma vertical como padrão
+
+### Onde os erros nasciam (e o que foi corrigido em cada componente)
+| Componente | Causa encontrada | Correção |
+|---|---|---|
+| Escolha do layout (`lib/pipeline.js`) | Seções e preparos paralelos geravam **raias** automaticamente, e o Funcional sem responsáveis criava uma coluna por título. | Raias **só com responsáveis ou departamentos**. Sem eles, o fluxo é sempre vertical, e o Funcional pedido à mão também vira vertical por etapas, com aviso. |
+| Extração das seções (`lib/heuristic.js`) | Seções informativas ("Comparativo entre Wi-Fi e cabo") viravam passos. | `INFO_SECTION`: comparativos, vantagens e diferenças ficam fora do fluxo e não contam como omissão. |
+| Construção das decisões (`alternativeSections`) | "Você pode escolher entre Wi-Fi ou Ethernet" criava um losango, e os títulos "Método X" criavam **outro** equivalente. | A decisão que já existe no documento é reaproveitada, e o validador remove decisões redundantes em sequência. |
+| Interpretação das condições (`lib/interpret.js`) | "Se a internet não funcionar, reinicie… / Se o problema continuar, …" deixava o Sim de "Internet funciona?" cair em "Problema continua?". | O "problema continuar" vira a saída do laço de nova tentativa, e o Sim encerra com sucesso. |
+| Texto (`lib/shorten.js`) | "O computador faz…" virava a ação "Fazer…", e substantivos compostos eram cortados ("na barra" de tarefas). | Eventos de sistema mantêm o sujeito ("Computador faz conexão automaticamente"), "Clique sobre o nome da rede X" vira "Selecionar rede X" e complementos cortados saem inteiros. |
+| Validação (`lib/validate.js`) | Textos sem sentido eram só avisados. | O **trecho original do PDF** aparece no bloco e no aviso, e cada decisão ganha uma estrutura com tipo, alternativas, destinos, origem no PDF e confiança (aba Análise). |
+| Visual (`visual-model.mjs`, estilos) | Visual cinza, sem diferenciar caminhos nem marcar convergências. | Novo estilo **Profissional claro** (padrão): caixas brancas arredondadas, bordas discretas, decisões amarelo-claro, Sim/Não coloridos, ponto nas convergências e setas finas. |
+| Documentos com vários procedimentos | Tudo virava um único fluxograma. | Procedimentos independentes ("Como cadastrar…", "Como emitir…") geram **fluxogramas separados**, salvos no histórico. |
+
+### Como fica o resultado
+- **Fluxo vertical:** Início no topo e Fim embaixo. Decisões abrem ramos para os lados (Não à esquerda, Sim à direita), que voltam ao eixo central. Retornos ficam tracejados pela lateral, e convergências são marcadas com um ponto.
+- **Mermaid:** o código usa `flowchart TD` (o mesmo que `TB`). Subgraphs só aparecem para etapas empilhadas na vertical ou para raias de responsáveis.
+
+## Novidades da versão 4.1: decisões com sentido, métodos alternativos e setas organizadas
+
+### Lógica das decisões
+- **Perguntas sempre afirmativas.** "Se a internet não funcionar, reinicie…" vira "Internet funciona?" com Não → reiniciar; "senha incorreta" vira "Senha está correta?"; "não tenha porta Ethernet" vira "Computador tem porta Ethernet?". Assim o Sim e o Não nunca ficam invertidos.
+- **Validação semântica (camada 4).** Antes de exibir, cada losango é conferido:
+  - **respostas invertidas** são corrigidas: correção ou diagnóstico no "Sim" de uma pergunta afirmativa, ou no "Não" de uma pergunta de falha como "Ocorreu erro?";
+  - **losangos inúteis**, com todas as saídas no mesmo passo, são removidos;
+  - nada pode sair do Fim nem entrar no Início.
+- **Só decisões com função real.**
+  - "Verifique se X" sem consequência descrita no documento vira um **passo** "Verificar X", e não um losango.
+  - Frases de **resultado** ("a conexão está funcionando") encerram o caminho com esse resultado, em vez de virar a ação "Estar funcionando".
+- **Caminhos não documentados, de forma inteligente.**
+  - Antes de marcar um caminho como faltante, o gerador procura a explicação no resto do documento. Exemplo: o Não de "Página carrega?" segue para a seção "Solução de problemas", e a condição repetida "Se a internet não funcionar" não vira outro losango.
+  - Se não houver explicação, o caminho termina num encerramento discreto e tracejado, **"Não documentado"**, com aviso para complementar.
+- **Retornos corretos.** "Reinicie o roteador" não é mais confundido com repetir "Conectar cabo no roteador": um retorno só acontece quando o texto pede a repetição ("novamente", "reinicie a instalação").
+
+### Estrutura do processo
+- **Métodos alternativos.** Seções como "Conexão por Wi-Fi" e "Conexão por cabo Ethernet", ou "Opção 1" e "Opção 2", viram **uma decisão de escolha** ("Qual tipo de conexão?"). Cada caminho é desenvolvido separado e todos se reúnem na primeira etapa comum, como a verificação da conexão. Etapas sequenciais, métodos alternativos e preparos paralelos são tratados de formas diferentes.
+- **Pré-condições.** "Caso o computador não tenha porta Ethernet, use um adaptador" vai para **antes** de "Conectar o cabo na porta", que depende dela.
+- **Layout automático.** Documentos com métodos alternativos usam o fluxograma vertical com os caminhos lado a lado, sem forçar colunas.
+
+### Setas e organização visual
+- **Colunas estáveis.** Cada caminho mantém a sua coluna: os ramos de uma decisão abrem para os lados e voltam a se encontrar no centro. Antes, cada linha era recentralizada, o que gerava setas diagonais e longas.
+- **Retornos (laços):**
+  - são **tracejados**, para diferenciar de caminhos de decisão;
+  - sobem por um corredor externo, por fora dos blocos, e entram pela lateral do destino;
+  - os muito longos viram um par de **conectores** (círculos com a mesma letra).
+- **Títulos de etapa** viram uma etiqueta por cima das setas, então a seta que entra na etapa não risca mais o texto.
+- **Textos sem sentido** (por exemplo "Car faz") ou cortados são sinalizados como incertos, com contorno laranja e aviso, sem inventar outra descrição.
+
+## Novidades da versão 4.0: gerador inteligente em camadas
+
+### Arquitetura (as 5 camadas)
+
+| Camada | Responsabilidade | Arquivos |
+|---|---|---|
+| 1. Extração | Lê o PDF no navegador (pdf.js), remove cabeçalhos e rodapés repetidos e separa seções, etapas e itens. | `public/app.js` (`extractPdfText`), `lib/heuristic.js` (`parseDocument`) |
+| 2. Interpretação | Entende o processo: objetivo, etapas, atividades, decisões, validações, dependências, repetições, dúvidas. | `lib/interpret.js` + `lib/heuristic.js` (modo Regras) ou IA (`lib/ai.js` + `lib/prompt.js`) |
+| 3. Representação | Modelo estruturado: nós tipados (início, fim, atividade, decisão, entrada/saída, dúvida), ligações e grupos. | `lib/model.js` |
+| 4. Validação | Revisa e corrige o modelo antes de exibir, e lista o que não pôde ser corrigido. | `lib/validate.js`, `lib/pipeline.js` |
+| 5. Renderização | Só desenha o código já validado: layout, setas ortogonais, editor e exportação. | `public/swimlane.mjs`, `public/visual-model.mjs`, `public/visual-editor.mjs` |
+
+Tanto o código da IA quanto o do modo Regras passam pelas camadas 3 e 4, e o código Mermaid exibido é gerado a partir do modelo validado.
+
+### Interpretação (camada 2)
+
+- **Objetivo do processo:** linhas como "Objetivo:" e "Escopo:" são identificadas e saem do fluxo. O objetivo aparece na Análise.
+- **Sequência operacional, e não a ordem dos parágrafos:**
+  - dependências explícitas são respeitadas: "clique em Concluir **quando a gravação terminar**" vai para depois da gravação, e "**antes de** X, faça Y" vai para antes de X;
+  - um passo de finalização ("Concluir", "Finalizar") que aparece antes de passos de configuração da mesma etapa vai para o fim dela;
+  - toda reorganização é avisada na Análise, e nada é reordenado sem evidência no texto.
+- **Decisões em losango** (se, caso, quando, senão, verifique se, confirme se, perguntas como "foi aprovado?" e "ocorreu algum erro?"), analisando o contexto:
+  - condição e negação viram **uma** decisão com as duas saídas: "Confirme se há papel" + "Se não houver papel, coloque" e "Se o gestor aprovar…" + "Se o gestor reprovar…";
+  - "Informe a chave. Se não tiver a chave, clique em…" vira "Tem chave do produto?", com Sim → informar e Não → clicar;
+  - "Se sim, …" e "Se não, …" depois de uma pergunta viram os ramos dela;
+  - várias condições sobre o mesmo assunto viram **uma decisão com várias saídas** rotuladas;
+  - "quando" que só indica momento ("quando terminar") e "se necessário" **não** criam losango.
+- **Caminhos de erro, retorno e repetição**, sempre com base no documento:
+  - "Caso contrário, verifique a conexão e reinicie o computador" → Não → Verificar conexão → **volta** para "Ligar computador", sem criar um bloco repetido;
+  - "Se o erro persistir após 3 tentativas, abra um chamado" → losango dentro do laço;
+  - quando o próximo passo depende só do ramo Sim (por exemplo, "receber confirmação do **pagamento**"), o ramo Não termina em "Fim sem conclusão".
+- **Informação ambígua ou incompleta:** nada é inventado.
+  - Uma condição sem o caminho "Não" vira o bloco tracejado **"Caminho não descrito no documento"**.
+  - "Talvez seja necessário… dependendo da versão" fica como passo marcado com dúvida ("Critério não definido: dependendo da versão").
+  - Os dois casos aparecem como aviso.
+- **Atividades em paralelo:** preparos independentes começam juntos e se encontram no passo que usa o resultado.
+
+### Símbolos e texto
+
+- **Símbolos:**
+  - estádio para início e fim;
+  - retângulo para atividade;
+  - losango para decisão;
+  - **paralelogramo para entrada ou saída de dados** (informar, digitar, preencher, registrar, imprimir, emitir relatório);
+  - retângulo tracejado laranja para dúvida.
+- **Textos de até 7 palavras** (antes eram 5), sem frases cortadas:
+  - advérbios ("repetidamente") e quantidades ("de no mínimo 8 GB") saem antes de cortar a ação;
+  - "Ligue o computador e pressione F12… **para abrir o menu de boot**" vira "Ligar computador e abrir menu de boot", e as teclas ficam como observação em itálico no próprio bloco.
+
+### Layout automático (tipo "Automático", agora o padrão)
+
+O gerador escolhe a estrutura pelo conteúdo do documento, sem impor 4 colunas a todo PDF:
+- **raias**, quando há responsáveis ou departamentos, ou atividades em paralelo;
+- **ramificado por etapas**, quando há 3 ou mais decisões reais ou o processo é extenso. Nesse layout, cada etapa vira um bloco com título e nenhuma pergunta é acrescentada;
+- **vertical (Processo)**, nos demais casos.
+
+O motivo da escolha aparece na Análise. Os tipos escolhidos à mão continuam funcionando como antes. Uma diferença: no tipo Decisão, as etapas do documento agora também aparecem como blocos com título.
+
+### Validação antes de exibir (camada 4)
+
+- **O que é verificado:**
+  - início e fim (são criados se faltarem);
+  - ligações quebradas, repetidas ou de um elemento para ele mesmo;
+  - atividades desconectadas ou sem continuação;
+  - decisões sem "?", com uma saída só ou com saídas sem rótulo;
+  - passos duplicados em sequência;
+  - laços sem saída ou sem condição;
+  - caminhos que não chegam ao fim;
+  - **instruções do documento sem bloco correspondente** (possível omissão);
+  - no navegador, **caixas sobrepostas e setas passando por cima de caixas**.
+- **Onde aparece:** o que é corrigido automaticamente fica listado no cartão **Validação do diagrama**, na aba Análise. Quando sobra um erro grave, uma faixa vermelha avisa no topo do resultado que o fluxograma precisa de revisão, para ele não ser apresentado como validado.
+
+### Como testar
+
+```
+npm test                      (ou: node tests/run.js && node tests/cenarios.js)
+```
+
+`tests/cenarios/` traz 11 documentos com estruturas diferentes (incluindo `internet_conexao.txt` e `internet_metodos.txt`, com métodos alternativos e perguntas negativas, e `processos_independentes.txt`), e `tests/cenarios.js` confere a lógica e o desenho de cada um. `exemplos/formatar_windows.pdf` é o caso da formatação do Windows em PDF, para testar pela interface.
+
+## Os 3 tipos de fluxograma
+
+No topo do cartão de envio, escolha o padrão na caixa **Tipo de fluxograma** (Processo (Linear / Simples), Funcional (Swimlane / Raia) ou Tomada de Decisão) **antes** de enviar o PDF. A escolha fica memorizada. Ela vai para o motor (IA ou Regras), que adapta a forma de interpretar o documento, e o desenho final segue o gabarito de cada tipo:
+
+| Tipo | Para quê | Como fica |
+|---|---|---|
+| **Processo** (linear) | Sequência direta de atividades, com início, meio e fim | **Um fluxo único e contínuo** de cima para baixo, do Início ao Fim, sem colunas, raias ou caixas de etapa. Só abre caminhos em **losangos de decisão** quando o documento traz uma condição real ("se…", "caso…"), com saídas **Não à esquerda e Sim à direita**. Guias longos são compactados: passos seguidos com o mesmo verbo viram um bloco só ("Conectar monitor, teclado e cabo"). |
+| **Funcional** (raias / swimlane) | Mostrar **quem** faz cada etapa: área, departamento, cargo, sistema ou cliente | Uma **raia por responsável**, com o nome no cabeçalho: colunas na orientação vertical, faixas na horizontal. A passagem de uma área para outra aparece como seta de lado. |
+| **Decisão** | Regras de negócio e triagens com perguntas Sim/Não | Árvore de losangos, **nunca uma lista linear**. Passos opcionais viram escolhas ("Deseja convidar amigos?"), validações viram conferências com volta para corrigir ("Conta confirmada?" → Não → Corrigir → tentar de novo) e cada etapa termina com "Passo N concluído?". Cada pergunta abre **Não à esquerda e Sim à direita** pelas pontas laterais. |
+
+- **Etapas sem responsáveis (Funcional):** se o documento não citar responsáveis, cada raia é uma **etapa principal** ("Passo 1", "Passo 2"…), sempre começando pela primeira. Subseções (por exemplo "Telefone" dentro do Passo 3) e dicas entram na raia da sua etapa, e "Passo 1: Acesse o site." no meio do texto também abre a etapa. Todas as raias têm a mesma largura, e o cabeçalho cresce para caber o título inteiro.
+- **Responsáveis (Funcional):** são reconhecidos no texto: "O cliente abre…", "A equipe de vendas analisa…", "Financeiro emite…", "Gerente: aprova…" e "(Responsável: X)". Se o documento não citar responsáveis, as raias são as seções do documento.
+- **Distribuição por raias (Funcional):** cada bloco fica na raia da sua etapa ou responsável. O Início fica sempre na 1ª raia. Preparos paralelos (ex.: "Preparo da massa" e "Preparo da cobertura") começam juntos, cada um na sua raia logo após o Início, e se juntam ao fluxo no passo que usa o resultado ("Espalhar cobertura"). Repetições como "asse por mais 5 minutos" voltam ao passo de verificação. Quando a IA amontoa os passos numa raia só, o programa redistribui cada bloco na raia certa comparando com as etapas do documento e avisa em Análise.
+- **Distribuição equilibrada (Funcional):** quando as raias são etapas ou fases (e não responsáveis), cada coluna começa no topo. Assim todas participam do diagrama inteiro, em vez de a 1ª coluna ocupar a metade de cima e as outras ficarem vazias. A passagem para a etapa seguinte sobe pelo corredor da coluna ao lado, sempre em 90°. Documentos sem responsáveis e sem etapas são divididos automaticamente em 2 a 4 fases equilibradas ("Fase 1: Acessar site…"), sem separar um losango dos seus ramos. Com responsáveis (Cliente, Vendas…), as raias continuam seguindo o tempo de cima para baixo.
+- **Transições entre raias (Funcional):** as setas são sempre ortogonais. Elas saem pela lateral do bloco, cruzam a borda da raia em 90°, descem pelo corredor livre da raia de destino e entram pela lateral do bloco, sem atravessar textos. Retornos dentro da mesma raia sobem pelo canto livre e entram de lado. Se o caminho direto bater num bloco, a seta passa por uma faixa livre entre as linhas. Passagens que usam o mesmo corredor ficam lado a lado, sem se sobrepor, e losangos recebem a seta por cima.
+- **Revisão de texto (todos os tipos):** antes de desenhar, cada bloco passa por uma revisão automática: verbo no infinitivo correto ("Fixe-a" → "Fixar", "Far verificação" → "Fazer verificação"), sem pronomes soltos, palavras repetidas ou cortadas e pontuação sobrando. Perguntas sempre terminam com "?".
+- **Coesão do texto (Processo):** alternativas que vêm em sequência viram um passo só, em vez de dois passos obrigatórios. Por exemplo, "Abrir Google Play Store" seguido de "Abrir App Store" vira "Abrir loja de aplicativos". Quando os caminhos são diferentes de verdade, vira um losango. Passos repetidos em sequência também se juntam. Isso vale para o modo Regras e para o código da IA.
+- **Regra universal 1, sem redundância (Processo, qualquer PDF):** passos seguidos que fazem a mesma coisa viram um só. Isso inclui verbos de navegação (acessar, abrir, entrar, ir até…) na mesma plataforma: "Acessar site do banco" seguido de "Entrar na plataforma" fica como um passo. O mesmo vale para sinônimos sobre o mesmo objeto (clicar/tocar, digitar/informar, verificar/conferir), repetições e alternativas como "Android ou iOS".
+- **Regra universal 2, dicas dentro do bloco (Processo, qualquer PDF):** dicas, avisos e observações nunca viram bloco isolado. Isso vale para linhas como "Atenção:", "Dica:", "Importante:", "Nunca…", "Evite…" e "Anote…", e para os itens de seções como "Dicas de segurança", "Observações" e "Avisos". Elas entram como subtítulo em itálico no bloco de ação do mesmo assunto (a dica da senha vai no bloco da senha) ou, se nenhum tratar do assunto, no bloco anterior. São no máximo 2 por bloco; as que sobram vão para o bloco seguinte. Funciona no modo Regras e no código da IA.
+- **Rótulos completos:** nenhum bloco termina cortado ("Não usar nome real nem" vira "Não usar nome real"), e campos de formulário viram ação ("Nome de usuário" vira "Informar nome de usuário", nunca "Nomar").
+- **Título:** se o PDF não tiver título nos metadados, o fluxograma usa a primeira linha do documento em vez do nome do arquivo.
+- **Edição e downloads:** o desenho de qualquer tipo pode ser editado no editor visual, e os downloads saem exatamente como aparecem na tela.
+- **Orientação:** em ⚙️ → *Orientação*, escolha vertical ou horizontal; o desenho é refeito na hora.
+
+## Telas
+
+**Início:** área de envio do PDF e importação por link. O status do motor roda em segundo plano, sem avisos na tela: só um pontinho discreto na engrenagem ⚙️ (verde = IA ativa, cinza = modo Regras, vermelho = servidor desconectado). Passe o mouse para ver o nome.
+
+**Histórico (☰, canto superior esquerdo):** o número no ícone indica quantos fluxogramas estão salvos. Na gaveta você pode:
+- buscar por título ou conteúdo;
+- 📌 **fixar** (os fixados ficam no topo);
+- ✏️ **renomear**;
+- 🗑️ **excluir** (com confirmação).
+
+Tudo fica salvo no navegador.
+
+**Resultado:**
+- Nota de **Qualidade** (0 a 100) e o botão **Voltar ao Início**.
+- Indicadores: **páginas lidas**, **elementos**, **decisões** e **modo usado** (Regras, Ollama, Claude ou OpenAI).
+- Aba **HTML Final:** fluxograma renderizado com **barras de rolagem**. Para navegar, use a roda do mouse (com Shift, rola na horizontal) ou as barras. Para dar zoom, use os botões ou Ctrl + roda. ↻ ou dois cliques ajustam o desenho à tela.
+- Aba **Código Mermaid:** editável, com validação e atualização ao vivo.
+- Aba **Análise:** verificações de qualidade, lista das decisões com seus ramos e dados da geração.
+- **Nível Resumido / Completo:** o Resumido agrupa sequências lineares de etapas, mantendo todas as decisões.
+- **Baixar:** HTML final, SVG, PNG em alta resolução e `.mmd`.
+
+Clique no título do resultado para renomeá-lo.
+
+## Editor visual ✏️ (estilo draw.io)
+
+Depois de gerar o fluxograma, clique em **Editar fluxograma**. O editor abre em tela cheia, já com o seu fluxograma carregado: mesmos blocos, cores, seções e ligações.
+
+- **Barra de formas (esquerda):**
+  - **Formas:** retângulo, arredondado, texto, título com parágrafo, elipse, quadrado, círculo, processo, losango, paralelogramo, hexágono, triângulo, cilindro, nuvem, documento, armazenamento interno, cubo, etapa, trapézio, fita, nota, cartão, balão, pessoa, atraso, dados armazenados, terminal e contêiner/seção.
+  - **Linhas:** seta, linha, tracejada, pontilhada, dupla, grossa, em ângulo e curva.
+  - **Arraste** uma forma para o desenho ou **clique** nela para adicionar no centro da tela.
+- **Clique duplo:**
+  - em um bloco, edita o texto ali mesmo (Enter confirma, Shift+Enter quebra linha, Esc cancela);
+  - em uma seta, edita o rótulo (Sim/Não…);
+  - em área vazia, cria um texto solto.
+  - também dá para editar o bloco selecionado com **F2** ou **Enter**. Uma forma nova chega pronta para mover, ligar e redimensionar; o texto é escrito quando você quiser.
+- **Mover e redimensionar:**
+  - arraste o bloco para movê-lo; as 8 alças **ou as próprias bordas** do bloco selecionado mudam o tamanho;
+  - tudo se encaixa na grade (segure **Alt** para mover livremente);
+  - mover uma seção leva junto os blocos de dentro.
+- **Ligar blocos:**
+  - passe o mouse sobre um bloco e puxe uma das **bolinhas azuis** até outro bloco;
+  - saindo de um losango, a seta já recebe o rótulo *Sim* e depois *Não*;
+  - **clique** (sem arrastar) numa bolinha azul para criar o próximo bloco naquele lado, já ligado.
+- **Linhas e setas livres (como no draw.io):**
+  - **Indicadores:** passe o mouse sobre qualquer seta e os indicadores aparecem, sem precisar selecionar antes:
+    - bolinhas nas pontas (azul = presa a um bloco; branca = solta);
+    - puxadores em cada trecho;
+    - nas linhas retas e curvas, pontos de dobra.
+  - **Pontas soltas:** arraste uma ponta para qualquer lugar livre e ela **fica solta** ali, inclusive dentro de uma seção. Ela só se prende quando é solta sobre um bloco ou bem perto de uma âncora; o ponto verde mostra onde vai prender. Segure **Alt** para nunca prender.
+  - **Formato da linha:**
+    - nas setas em ângulo, arraste o puxador de um trecho para deslocá-lo; a linha vira "L", "Z" ou "U" e continua em 90°;
+    - nas retas e curvas, arraste o ponto do meio para criar uma dobra (uma reta vira "L"), arraste uma dobra para movê-la, e um clique duplo nela a remove;
+    - clique duplo num puxador de trecho, ou *botão direito → Rota automática da seta*, volta ao caminho automático.
+  - **Mover a linha inteira:** arraste o corpo da linha. Se as pontas estiverem soltas, a linha toda se move; se estiverem presas, arrastar muda o formato do trecho.
+  - Ao mover blocos selecionados juntos, as dobras das setas entre eles acompanham.
+  - As setas em ângulo sem dobras manuais desviam sozinhas dos blocos.
+- **Guias de alinhamento:** ao mover, linhas rosa aparecem e encaixam o bloco alinhado às bordas ou ao centro dos outros.
+- **Botão direito:** menu com editar texto, recortar, copiar, colar, duplicar, excluir, trazer à frente, enviar para trás, desfazer, refazer e selecionar tudo. Na área vazia, adiciona texto, retângulo ou decisão no ponto clicado.
+- **Selecionar e excluir:**
+  - clique seleciona; Shift+clique ou arrastar na área vazia (laço) seleciona vários;
+  - **Delete** exclui blocos e setas; ao excluir um bloco, as setas dele saem juntas.
+- **Formatação (barra de cima):** cores de preenchimento, borda e texto, tamanho da letra, negrito, alinhamento, trazer à frente ou enviar para trás, duplicar. Nas setas: cor, contínua/tracejada/pontilhada, fina/grossa, ângulo/reta/curva e pontas.
+- **Atalhos:** Ctrl+Z / Ctrl+Y desfaz/refaz (e devolve a seleção) · Ctrl+C / Ctrl+X / Ctrl+V / Ctrl+D copia/recorta/cola/duplica · Delete ou Backspace exclui · Ctrl+A seleciona tudo · setas do teclado movem (Shift = 10 px) · Espaço + arrastar move a tela · Ctrl + rolagem dá zoom · Ctrl+S salva.
+- **Salvar Edições:**
+  - o desenho fica guardado no histórico, inclusive depois de fechar o navegador;
+  - a aba *HTML Final* passa a mostrar exatamente o que você desenhou;
+  - **Baixar → PNG, SVG e HTML saem idênticos ao editor.** O código Mermaid e a Análise acompanham a estrutura (blocos, textos e ligações).
+- **Voltar ao layout automático:** descarta o desenho manual. Isso também acontece se você editar o código Mermaid na aba *Código Mermaid*.
+
+## Regras de qualidade do fluxograma
+
+Valem para qualquer motor (IA ou Regras) e são **conferidas automaticamente** na aba Análise:
+
+1. **Decisões reais em losango `{Pergunta?}`:** um losango só é criado quando o texto traz uma condição de verdade: "se", "caso", "quando", "verifique se", "certifique-se de que", "aprovado?", "sucesso/erro". A pergunta é a do documento (ex.: "Jogo já comprado?", "Há espaço suficiente no SSD?").
+   - Nunca há losango vazio ou genérico ("Condição?", "Contrário?").
+   - "Caso contrário" / "senão" vira o ramo **Não** da decisão anterior, e não uma pergunta nova.
+2. **Ordem cronológica real:**
+   - Etapas, fases e partes de um passo a passo ("Etapa 1: Preparação fora do gabinete", "Etapa 2: Instalação no gabinete") são feitas **uma depois da outra**, na ordem do documento: o último passo de uma etapa liga ao primeiro da seguinte.
+   - Nunca vira um losango de escolha como "Qual etapa usar?", e o que é preparação vem sempre antes do que depende dela.
+   - Só há bifurcação com condição real ("se sim / se não") ou com **alternativas explicitamente excludentes**: por exemplo, "Método 1 / Método 2", ou "Instalação por disco" **ou** "Instalação digital". Nesses casos, um losango de escolha abre um ramo por opção, lado a lado.
+3. **Linhas limpas, sem emaranhado:**
+   - As saídas Sim/Não saem pelas **pontas laterais** do losango, em rotas retas que desviam só dos blocos que estão no caminho (`public/route.mjs`).
+   - Depois do desvio, os ramos **voltam ao fluxo principal** no passo seguinte: nada de setas subindo ou atravessando o desenho.
+   - Em vez de "Corrigir pendência", o ramo Não traz a ação concreta (ex.: "Conectar console à internet").
+4. **Uma ação por bloco (sem listas de tarefas):**
+   - Cada caixa tem **uma única ação** curta e direta. Vários passos seguidos viram várias caixas pequenas ligadas em sequência, por exemplo: "Encaixar processador no soquete" → "Alinhar marcação do processador" → "Baixar trava do soquete".
+   - Se a IA ainda devolver um bloco com lista ("- a - b - c"), o sistema o quebra automaticamente em passos encadeados (`lib/sanitize.js`).
+   - Cada seção do documento vira um **bloco com título** (subgrafo), mantendo a sequência entre as seções.
+   - A aba **Análise** tira pontos se aparecer bloco com lista ou escolha entre etapas.
+5. **No máximo 5 palavras por linha**, no padrão "Verbo no infinitivo + objeto". Por exemplo, "O montador deve encaixar as quatro pernas nos cantos do tampo" vira "Encaixar quatro pernas nos cantos" (`lib/shorten.js`).
+6. **Hierarquia limpa:** Início → passos → decisões → alternativas/exceções → Fim. **Início é o primeiro e Fim é o último elemento dentro do bloco principal**: com uma seção, ficam dentro dela; com várias, um bloco com o título do documento contém tudo. O que não é passo fica de fora: metadados do Confluence, visão geral, tabelas e observações.
+7. **Espaçamento generoso** entre os blocos, e os textos nunca ficam cortados.
+
+Para testar, use os PDFs em `exemplos/`: `montar_mesa.pdf` e `instalar_jogos_ps5.pdf`.
+
+## Fluxogramas-modelo (`exemplos-modelo/`)
+
+O app segue o formato de três fluxogramas de referência (as imagens originais estão em `exemplos-modelo/imagens/`):
+
+| Modelo | O que ensina |
+|---|---|
+| 01 Atendimento na loja | Losangos na coluna central, Não à esquerda e Sim à direita, ramos terminando no Fim |
+| 02 Recrutamento | Coluna central linear; reprovação vai para um bloco lateral que **volta pela lateral** ao passo de triagem |
+| 03 Rotina do dia | Cada losango abre **dois blocos ao lado, na mesma altura**, que descem e entram juntos no próximo passo |
+
+Os modelos são usados de duas formas:
+- **No desenho (qualquer motor):** os ramos dos losangos ficam ao lado deles, na mesma altura, e voltam à coluna central. As linhas são retas (90°), os retornos sobem pela lateral e os espaços vazios são compactados.
+- **Na IA:** os arquivos `.mmd` da pasta vão no prompt como exemplos de formato, com a instrução de **não copiar o conteúdo**. Para ensinar um novo formato, coloque outro `.mmd` na pasta e reinicie o app (veja `exemplos-modelo/LEIA-ME.txt`).
+
+### Estilo visual (⚙️ → Aparência e preferências)
+- **Clássico cinza** (padrão): como os modelos 1 e 3.
+- **Azul corporativo:** como o modelo 2.
+- **Moderno colorido:** verde, amarelo e vermelho.
+
+O estilo vale na tela e em todos os downloads.
+
+## Motores de análise (⚙️)
+
+A janela ⚙️ mostra **só os campos do provedor escolhido** (Automático, Ollama, Claude, OpenAI ou Regras), com indicadores curtos de status: chave informada, conectado, não encontrado. Em **Automático**, aparece um resumo de cada motor. Os botões *Cancelar* e *Salvar* ficam sempre fixos no rodapé. Avisos de geração (por exemplo, quando a IA falha e o modo Regras assume) não aparecem mais flutuando na tela: ficam em **Análise → Sobre o documento → Observação**.
+
+No modo **Automático**, o app escolhe nesta ordem:
+
+| Ordem | Motor | Quando é usado | Privacidade |
+|---|---|---|---|
+| 1 | **Claude** | Chave da Anthropic configurada | Texto enviado à API |
+| 2 | **OpenAI / compatível** | Chave configurada | Depende do serviço |
+| 3 | **Ollama** | Ollama rodando com um modelo baixado | **100% local** |
+| 4 | **Regras** | Nenhum dos anteriores | **100% local** |
+
+Para usar IA 100% local:
+1. Instale o Ollama em https://ollama.com.
+2. Rode `ollama pull llama3.1`.
+
+Em ⚙️ → Provedor "Ollama", o indicador mostra "Conectado · N modelos" (ou "Sem modelos" / "Não encontrado"); o botão **Testar conexão** confere a URL antes de salvar.
+
+As chaves ficam somente neste computador, no arquivo `config.json`.
+
+## Garantia de resultado
+
+1. O texto do PDF é lido no navegador, e cabeçalhos e rodapés repetidos são removidos.
+2. O motor gera o fluxograma com regras rígidas: decisões em losango `{Pergunta?}`, saídas `-->|Sim|` / `-->|Não|` e desvios pelas laterais.
+3. O código é limpo e validado com o Mermaid. Se houver erro, a IA o corrige sozinha (até 2 tentativas). Se ainda assim falhar, o **modo Regras** assume, então sempre sai um fluxograma.
+
+## Limitações conhecidas (versão 4.0)
+
+- **Modo Regras:** a interpretação funciona com regras de linguagem, sem IA. Ela entende bem procedimentos escritos em passos, condições ("se", "caso", "verifique se") e repetições, mas texto muito livre (parágrafos longos sem passos) gera fluxos mais simples. Com uma IA conectada, o resultado passa pelas mesmas validações.
+- **Ordem:** só é reorganizada com evidência no texto ("quando", "após", "antes de", ou um passo de conclusão no meio da configuração). Inversões sem nenhuma pista não são detectadas.
+- **Contradições:** o gerador não identifica contradições entre trechos distantes do documento. Ele marca como dúvida apenas condições sem consequência e instruções vagas.
+- **Retornos deduzidos:** quando o documento não diz o que fazer se uma verificação falhar, o caminho "Não" volta para o passo verificado (refazer). Isso é sempre avisado na Análise.
+- **Conectores de página:** documentos muito extensos geram um diagrama longo (as etapas aparecem em blocos com título), mas não são divididos em várias páginas com conectores.
+- **Cruzamentos de setas:** a validação visual reconhece sobreposição de caixas e setas sobre caixas. Cruzamentos entre duas setas foram reduzidos com colunas estáveis, corredores externos para os retornos e conectores, mas ainda podem acontecer em fluxos com muitos retornos.
+- **Processos independentes:** só são separados quando o PDF é uma coleção de procedimentos ("Como…", "Procedimento…") sem uma etapa comum depois. Ao usar "Gerar novamente" num deles, apenas o primeiro processo é refeito.
+- **Funcional sem responsáveis:** gera o fluxo vertical por etapas, em vez de raias por seção. Para ver raias, o documento precisa indicar quem faz cada passo.
+- **Métodos alternativos:** são reconhecidos pelos títulos das seções ("Conexão por X" / "Conexão por Y", "Opção 1/2", "Método A/B"). Alternativas descritas só dentro de um parágrafo continuam virando decisão apenas quando o texto usa "se" ou "caso".
+- **Semântica das respostas:** a correção de respostas invertidas usa o vocabulário dos blocos (corrigir, verificar, reiniciar, contatar…). Quando o destino é neutro, a decisão é mantida como veio do documento.
+- **Arquivos sem texto:** PDFs escaneados (imagem) continuam sem suporte, porque não há OCR.
+
+## Problemas comuns
+
+- **"Não encontrei texto":** o PDF é uma imagem escaneada. Exporte novamente do Confluence (Exportar → PDF).
+- **Link do Confluence pede login:** baixe o PDF e use o upload, ou informe um *Personal Access Token* em ⚙️ → Aparência e preferências → Avançado.
+- **Baixei a versão nova, mas aparece a antiga:** a janela preta da versão anterior ainda estava aberta, ocupando a porta 3210.
+  - A partir da versão 3.2.0, o `INICIAR.bat` resolve isso sozinho: pede para a versão antiga fechar ou, se ela não souber fechar, abre a nova na próxima porta livre (3211, 3212…).
+  - Confira a versão em ⚙️ Configurações, logo abaixo do título.
+  - Para voltar à porta padrão, feche as janelas pretas antigas.
+- **Porta ocupada por outro programa:** o app usa a próxima porta livre. Para fixar uma porta, defina a variável `PORT`, por exemplo `PORT=4000`.
+
+## Estrutura
+
+```
+server.js           servidor local (Node puro; só aceita conexões desta máquina)
+lib/prompt.js       regras do fluxograma enviadas à IA
+lib/ai.js           motores (Claude, OpenAI, Ollama) + detecção automática
+lib/sanitize.js     limpeza e correção automática do código Mermaid
+lib/heuristic.js    modo Regras (sem IA): extração das seções e montagem do fluxo
+lib/interpret.js    camada 2: objetivo, dependências, condições, repetições e dúvidas
+lib/model.js        camada 3: modelo estruturado (nós tipados, ligações, grupos) ⇄ Mermaid
+lib/validate.js     camada 4: validação lógica e estrutural com correção automática
+lib/pipeline.js     orquestra as camadas e escolhe o tipo Automático
+lib/coherence.js    redundâncias, sinônimos e dicas dentro dos blocos
+lib/lanes.js        correção das raias vindas da IA
+lib/shorten.js      encurta textos para até 7 palavras (verbo + objeto)
+public/route.mjs    saídas laterais dos losangos (pós-processamento do SVG)
+public/visual-model.mjs  formas, rotas das setas, desenho SVG e conversão para Mermaid
+public/visual-editor.mjs editor visual estilo draw.io (paleta, seleção, conexões, texto no lugar)
+public/swimlane.mjs      layout automático dos 3 tipos (coluna do Processo, raias do Funcional, árvore da Decisão)
+public/graph.mjs    análise do fluxograma: qualidade, decisões, nível Resumido
+public/             interface (index.html, style.css, app.js) + vendor/
+tests/run.js        testes de unidade (npm test)
+tests/cenarios.js   8 cenários de ponta a ponta (tests/cenarios/*.txt)
+exemplos/           PDFs de exemplo (montar mesa, jogos no PS5, chamados, Roblox, formatação do Windows, conexão à internet)
+exemplos-modelo/    fluxogramas-modelo (.mmd) usados como referência de formato + imagens originais
+```
+
+Licenças de terceiros: Mermaid (MIT) e pdf.js (Apache 2.0), em `public/vendor/`.

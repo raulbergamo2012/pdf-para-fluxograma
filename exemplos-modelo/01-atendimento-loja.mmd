@@ -1,0 +1,33 @@
+%% Modelo 1 — Atendimento na loja
+%% Padrão: decisões na coluna central; Não à esquerda, Sim à direita; ramos voltam ao fluxo ou terminam no Fim.
+flowchart TD
+    INICIO(["Início"])
+    P1["Abordar cliente na entrada"]
+    D1{"Cliente diz o que busca?"}
+    P2["Oferecer ajuda e deixar circular"]
+    P3["Indicar opções de produtos"]
+    D2{"Cliente pede informação?"}
+    P4["Explicar especificações do produto"]
+    D3{"Cliente quer comprar?"}
+    P5["Agradecer e oferecer ajuda"]
+    P6["Encaminhar para fechamento"]
+    FIM(["Fim"])
+
+    INICIO --> P1
+    P1 --> D1
+    D1 -->|Não| P2
+    D1 -->|Sim| P3
+    P2 --> D2
+    D2 -->|Não| FIM
+    D2 -->|Sim| P4
+    P3 --> P4
+    P4 --> D3
+    D3 -->|Não| P5
+    D3 -->|Sim| P6
+    P5 --> FIM
+    P6 --> FIM
+
+    classDef inicioFim fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef decisao fill:#FFF8E1,stroke:#F9A825,stroke-width:2px,color:#5D4037
+    class INICIO,FIM inicioFim
+    class D1,D2,D3 decisao

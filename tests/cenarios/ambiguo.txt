@@ -1,0 +1,7 @@
+Atualização do sistema de vendas
+1. Faça login no painel administrativo.
+2. Se houver atualização pendente.
+3. Baixe o pacote de atualização.
+4. Talvez seja necessário reiniciar o servidor, dependendo da versão.
+5. Aplique a atualização.
+6. Confirme se a versão nova aparece no rodapé.

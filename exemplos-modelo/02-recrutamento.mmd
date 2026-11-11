@@ -1,0 +1,38 @@
+%% Modelo 2 — Processo de recrutamento
+%% Padrão: coluna central linear; reprovação vai para um bloco lateral que RETORNA pela lateral ao passo de triagem.
+flowchart TD
+    INICIO(["Início"])
+    P1["Abrir vaga aprovada"]
+    P2["Divulgar vaga"]
+    P3["Publicar no site e plataformas"]
+    P4["Coletar e triar candidatos"]
+    P5["Analisar perfis com liderança"]
+    D1{"Aprovado?"}
+    R1["Retomar triagem de candidatos"]
+    P6["Enviar carta de oferta"]
+    D2{"Proposta aceita?"}
+    P7["Coletar documentos"]
+    P8["Admitir e assinar contrato"]
+    FIM(["Fim"])
+
+    INICIO --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> P5
+    P5 --> D1
+    D1 -->|Não| R1
+    D1 -->|Sim| P6
+    R1 --> P4
+    P6 --> D2
+    D2 -->|Não| R1
+    D2 -->|Sim| P7
+    P7 --> P8
+    P8 --> FIM
+
+    classDef inicioFim fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20
+    classDef decisao fill:#FFF8E1,stroke:#F9A825,stroke-width:2px,color:#5D4037
+    classDef erro fill:#FFEBEE,stroke:#C62828,stroke-width:1.5px,color:#B71C1C
+    class INICIO,FIM inicioFim
+    class D1,D2 decisao
+    class R1 erro

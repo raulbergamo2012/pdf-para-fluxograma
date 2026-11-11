@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF para Fluxograma</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%231B7A8A'/><rect x='7' y='7' width='8' height='6' rx='1.5' fill='none' stroke='white' stroke-width='2'/><rect x='17' y='19' width='8' height='6' rx='1.5' fill='none' stroke='white' stroke-width='2'/><path d='M11 13v5a2 2 0 0 0 2 2h4' fill='none' stroke='white' stroke-width='2'/></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="on-home">
+  <!-- fundo da tela inicial: gradiente suave + blobs luminosos desfocados -->
+  <div class="bg-scene" aria-hidden="true">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span><span class="blob b4"></span>
+  </div>
+  <!-- ================= GAVETA DE HISTÓRICO ================= -->
+  <aside id="sidebar" class="drawer" aria-label="Histórico" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <p class="eyebrow eyebrow-sm">Seus fluxogramas</p>
+        <h2>Histórico</h2>
+      </div>
+      <button class="sq-btn" id="btnCloseSidebar" title="Fechar" aria-label="Fechar histórico">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      <button class="new-btn" id="btnNew">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Novo fluxograma
+      </button>
+      <label class="search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="Buscar no histórico" autocomplete="off">
+      </label>
+      <p class="h-count" id="historyCount"></p>
+      <div id="historyList" class="history"></div>
+    </div>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <!-- ================= TOPO ================= -->
+  <header class="topbar">
+    <button class="sq-btn menu-btn" id="btnMenu" title="Histórico" aria-label="Abrir histórico">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="brand" href="#" id="brandHome">
+      <span class="logo">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="5.5" rx="1.4"/><rect x="13.5" y="15" width="7" height="5.5" rx="1.4"/><path d="M7 9v5.5a2 2 0 0 0 2 2h4.5"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong>PDF para Fluxograma</strong>
+        <small id="brandSub">Processamento local</small>
+      </span>
+    </a>
+    <span class="spacer"></span>
+    <button class="sq-btn gear" id="btnSettings" title="Configurações" aria-label="Configurações"><span class="gear-dot" id="engineDot"></span>
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <!-- ================= TELA INICIAL ================= -->
+    <section id="homeView" class="home">
+      <div class="hero">
+        <p class="eyebrow"><span class="rule"></span>Privado · Local · Automático</p>
+        <h1>Do PDF ao fluxograma <em>com uma seleção.</em></h1>
+        <p class="lead">Escolha um PDF ou cole um link público. O aplicativo identifica atividades, decisões, caminhos de SIM e NÃO, retornos, início e fim — e entrega o Mermaid pronto.</p>
+        <p class="privacy" id="privacyNote">
+          <svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span id="privacyText">Arquivos locais permanecem no computador.</span>
+        </p>
+      </div>
+
+      <div class="upload-card" id="uploadCard">
+        <!-- tipo de fluxograma: escolhido antes de enviar o PDF (mesmo padrão do "Estilo do fluxograma") -->
+        <label class="type-field" for="typeSelect">Tipo de fluxograma
+          <select id="typeSelect">
+            <option value="auto">Automático (recomendado)</option>
+            <option value="processo">Processo (Linear / Simples)</option>
+            <option value="raias">Funcional (Swimlane / Raia)</option>
+            <option value="decisao">Tomada de Decisão</option>
+          </select>
+        </label>
+
+        <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Selecionar PDF e gerar fluxograma">
+          <input id="fileInput" type="file" accept="application/pdf,.pdf,.txt,.md" hidden>
+          <div class="dz-idle">
+            <span class="dz-icon">
+              <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M12 18v-6M9 15l3-3 3 3"/></svg>
+            </span>
+            <strong>Selecionar PDF e gerar</strong>
+            <span class="dz-sub">ou arraste o documento para esta área</span>
+            <span class="chip">PDF com texto selecionável · até 80 MB</span>
+          </div>
+          <div class="dz-busy" hidden>
+            <span class="spinner"></span>
+            <strong id="busyTitle">Lendo o documento…</strong>
+            <span class="dz-sub" id="busyDetail"></span>
+            <span class="progress"><span id="busyBar"></span></span>
+          </div>
+        </div>
+
+        <div class="divider"><span>Ou importe por link</span></div>
+
+        <form id="urlForm" class="url-row">
+          <span class="url-icon">
+            <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
+          </span>
+          <input id="urlInput" type="url" placeholder="URL direta do PDF ou Confluence" required>
+          <button type="submit" class="btn-primary" id="btnImport">Importar</button>
+        </form>
+        <p class="hint">Links públicos ou acessíveis sem login.</p>
+
+        <div class="card-foot">
+          <ol class="flow-steps" id="flowSteps">
+            <li data-step="1"><b>1</b>PDF</li>
+            <li class="sep" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></li>
+            <li data-step="2"><b>2</b><span id="step2Label">Análise local</span></li>
+            <li class="sep" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></li>
+            <li data-step="3"><b>3</b>Fluxograma</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RESULTADO ================= -->
+    <section id="resultView" class="result" hidden>
+      <div class="result-head">
+        <div class="result-intro">
+          <p class="eyebrow"><span class="rule"></span>Resultado gerado</p>
+          <h1 id="resultTitle" class="result-title" title="Clique para renomear"></h1>
+          <p id="resultSummary" class="result-sub"></p>
+          <p id="validationNote" class="validation-note" hidden></p>
+        </div>
+        <div class="result-actions">
+          <div class="quality" id="qualityBadge" title="Nota calculada pelas verificações da aba Análise">
+            <span class="q-dot"></span>
+            <span class="q-text"><small>Qualidade</small><b id="qualityGrade">—</b></span>
+            <strong id="qualityScore">—</strong>
+          </div>
+          <button class="btn-outline" id="btnBack">
+            <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h5v-6h4v6h5V9.5"/></svg>
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
+          <div><strong id="statPages">—</strong><small id="statPagesLabel">Páginas lidas</small></div>
+        </div>
+        <div class="stat">
+          <span class="stat-icon teal"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="5.5" rx="1.4"/><rect x="13.5" y="15" width="7" height="5.5" rx="1.4"/><path d="M7 9v5.5a2 2 0 0 0 2 2h4.5"/></svg></span>
+          <div><strong id="statElements">—</strong><small>Elementos</small></div>
+        </div>
+        <div class="stat">
+          <span class="stat-icon amber"><svg viewBox="0 0 24 24"><path d="M12 2.5 21.5 12 12 21.5 2.5 12z"/><path d="M12 8v4.5M12 16h.01"/></svg></span>
+          <div><strong id="statDecisions">—</strong><small>Decisões</small></div>
+        </div>
+        <div class="stat">
+          <span class="stat-icon purple"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></span>
+          <div><strong id="statMode">—</strong><small>Modo usado</small></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-bar">
+          <div class="tabs" role="tablist">
+            <button role="tab" class="tab active" data-tab="visual">HTML Final</button>
+            <button role="tab" class="tab" data-tab="code">Código Mermaid</button>
+            <button role="tab" class="tab" data-tab="analysis">Análise</button>
+          </div>
+          <span class="spacer"></span>
+          <div class="level" id="levelSeg">
+            <span>Nível</span>
+            <button data-level="resumido">Resumido</button>
+            <button data-level="completo">Completo</button>
+          </div>
+          <div class="zoom" id="zoomCtl">
+            <button class="icon-btn" id="zoomOut" title="Diminuir zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg></button>
+            <span id="zoomLabel" title="Role para navegar · Ctrl + rolagem para zoom">100%</span>
+            <button class="icon-btn" id="zoomIn" title="Aumentar zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg></button>
+            <button class="icon-btn" id="zoomFit" title="Ajustar à tela"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+          </div>
+          <button class="btn-edit" id="btnEdit" title="Abrir o editor visual (estilo draw.io)">
+            <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg> Editar fluxograma
+          </button>
+          <div class="dropdown">
+            <button class="btn-export" id="btnExport" title="Baixar">
+              <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg> Baixar
+            </button>
+            <div class="menu" id="exportMenu" hidden>
+              <button data-export="html">HTML final <small>.html</small></button>
+              <button data-export="svg">Imagem vetorial <small>.svg</small></button>
+              <button data-export="png">Imagem <small>.png</small></button>
+              <button data-export="mmd">Código Mermaid <small>.mmd</small></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane" id="visualPane">
+          <div class="visual-wrap">
+            <div id="canvas" class="canvas"><div id="diagram" class="diagram"></div></div>
+            <div id="visualNote" class="visual-note" hidden>
+              <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+              <span>Exibindo a <b>versão editada</b> à mão — os downloads saem exatamente assim.</span>
+              <button type="button" id="btnAutoLayout" title="Descarta o desenho manual e volta ao layout automático gerado a partir do código">Voltar ao layout automático</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane" id="codePane" hidden>
+          <div class="code-bar">
+            <span id="codeHint" class="muted">Edite o código — o fluxograma é atualizado automaticamente.</span>
+            <span class="spacer"></span>
+            <span id="codeStatus" class="status"></span>
+            <button class="btn-outline sm" id="btnCopy">Copiar</button>
+          </div>
+          <textarea id="codeEditor" spellcheck="false"></textarea>
+        </div>
+
+        <div class="pane analysis" id="analysisPane" hidden></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= editor visual (estilo draw.io) ================= -->
+  <div id="vEditor" class="ve" hidden role="dialog" aria-label="Editor visual do fluxograma">
+    <header class="ve-top">
+      <div class="ve-title"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Editor visual</span><small id="veName"></small></div>
+      <div class="ve-tools">
+        <button class="ve-tbtn" id="veUndo" title="Desfazer (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="ve-tbtn" id="veRedo" title="Refazer (Ctrl+Y)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+        <span class="ve-sep"></span>
+        <button class="ve-tbtn" id="veZoomOut" title="Diminuir zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg></button>
+        <span id="veZoom" class="ve-zoom">100%</span>
+        <button class="ve-tbtn" id="veZoomIn" title="Aumentar zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6M11 8v6"/></svg></button>
+        <button class="ve-tbtn" id="veFit" title="Ajustar à tela"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        <span class="ve-sep"></span>
+        <button class="ve-tbtn" id="veDelete" title="Excluir selecionados (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+      </div>
+      <div class="ve-actions">
+        <span id="veStatus" class="ve-status">Nenhuma alteração</span>
+        <button class="btn-outline" id="veCancel">Cancelar</button>
+        <button class="btn-primary ve-save" id="veSave"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Salvar Edições</button>
+      </div>
+    </header>
+    <div class="ve-format" id="veFormat"></div>
+    <div class="ve-body">
+      <aside class="ve-palette" id="vePalette" aria-label="Formas"></aside>
+      <div class="ve-canvas" id="veCanvas"></div>
+    </div>
+  </div>
+
+
+  <!-- ================= CONFIGURAÇÕES ================= -->
+  <dialog id="settings" class="modal settings">
+    <form method="dialog" id="settingsForm">
+      <header class="set-head">
+        <div>
+          <h2>Configurações</h2>
+          <p class="muted small">Salvas apenas neste computador · <span id="appVersion">versão —</span></p>
+        </div>
+        <button value="cancel" class="sq-btn" aria-label="Fechar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </header>
+
+      <div class="set-body">
+        <section class="set-card">
+          <div class="set-card-head">
+            <h3>Motor de análise</h3>
+            <span class="chip" id="engineChip"><i></i><span>Verificando…</span></span>
+          </div>
+          <label class="set-field">Provedor
+            <select name="provider" id="providerSelect">
+              <option value="auto">Automático</option>
+              <option value="ollama">Ollama · local</option>
+              <option value="anthropic">Claude (Anthropic)</option>
+              <option value="openai">OpenAI / compatível</option>
+              <option value="regras">Regras · sem IA</option>
+            </select>
+          </label>
+
+          <!-- campos aparecem só para o provedor escolhido -->
+          <div class="prov-panel" data-prov="auto">
+            <p class="set-note">Usa a primeira opção disponível: Claude → OpenAI → Ollama → Regras.</p>
+            <ul class="prov-status" id="autoStatus"></ul>
+          </div>
+
+          <div class="prov-panel" data-prov="ollama">
+            <div class="grid2">
+              <label class="set-field">URL <input name="ollamaUrl" placeholder="http://localhost:11434"></label>
+              <label class="set-field">Modelo <input name="ollamaModel" list="ollamaModels" placeholder="llama3.1"></label>
+            </div>
+            <datalist id="ollamaModels"></datalist>
+            <div class="set-inline">
+              <span class="chip" id="ollamaChip"><i></i><span>—</span></span>
+              <button type="button" class="link-btn" id="ollamaTest">Testar conexão</button>
+              <details class="set-help"><summary>Como instalar</summary><p>Baixe em <b>ollama.com</b> e, no terminal, rode <code>ollama pull llama3.1</code>.</p></details>
+            </div>
+          </div>
+
+          <div class="prov-panel" data-prov="anthropic">
+            <div class="grid2">
+              <label class="set-field">Chave da API <input name="anthropicKey" type="password" placeholder="sk-ant-…" autocomplete="off"></label>
+              <label class="set-field">Modelo <input name="anthropicModel" placeholder="claude-sonnet-5-5"></label>
+            </div>
+            <div class="set-inline"><span class="chip" data-key-chip="anthropicKey"><i></i><span>—</span></span></div>
+          </div>
+
+          <div class="prov-panel" data-prov="openai">
+            <div class="grid2">
+              <label class="set-field">Chave da API <input name="openaiKey" type="password" placeholder="sk-…" autocomplete="off"></label>
+              <label class="set-field">Modelo <input name="openaiModel" placeholder="gpt-4o-mini"></label>
+            </div>
+            <label class="set-field">URL base <input name="openaiBaseUrl" placeholder="https://api.openai.com/v1"></label>
+            <div class="set-inline"><span class="chip" data-key-chip="openaiKey"><i></i><span>—</span></span></div>
+          </div>
+
+          <div class="prov-panel" data-prov="regras">
+            <p class="set-note">Gera o fluxograma por regras de texto, sem IA e sem internet.</p>
+          </div>
+        </section>
+
+        <section class="set-card">
+          <div class="set-card-head"><h3>Aparência e preferências</h3></div>
+          <div class="grid2">
+            <label class="set-field">Estilo do fluxograma
+              <select name="visualStyle">
+                <option value="profissional">Profissional claro (padrão)</option>
+                <option value="classico">Clássico cinza</option>
+                <option value="azul">Azul corporativo</option>
+                <option value="moderno">Moderno colorido</option>
+              </select>
+            </label>
+            <label class="set-field">Orientação
+              <select name="direction">
+                <option value="TD">Vertical ↓</option>
+                <option value="LR">Horizontal →</option>
+              </select>
+            </label>
+          </div>
+          <details class="set-adv">
+            <summary>Avançado</summary>
+            <label class="set-field">Token para importar links do Confluence <span class="opt">opcional</span>
+              <input name="urlAuthToken" type="password" autocomplete="off" placeholder="Token pessoal (PAT)">
+            </label>
+          </details>
+        </section>
+      </div>
+
+      <footer class="set-foot">
+        <button value="cancel" class="btn-outline">Cancelar</button>
+        <button value="save" class="btn-primary">Salvar</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="vendor/mermaid.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

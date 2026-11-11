@@ -1,0 +1,8 @@
+Rotina de backup do servidor
+1. Inicie o software de backup.
+2. Selecione as pastas que serão copiadas.
+3. Execute o backup.
+4. Verifique se o backup foi concluído sem erros.
+5. Caso contrário, verifique o espaço em disco e execute o backup novamente.
+6. Se o erro persistir após três tentativas, abra um chamado para a equipe de infraestrutura.
+7. Registre o resultado no relatório de backups.

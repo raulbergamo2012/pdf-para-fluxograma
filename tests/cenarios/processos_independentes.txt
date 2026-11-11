@@ -1,0 +1,13 @@
+Manual do aplicativo de vendas
+Este manual reúne os procedimentos mais usados no aplicativo.
+Como cadastrar um cliente
+1. Abra o menu Clientes.
+2. Clique em Novo cliente.
+3. Preencha o nome, o CPF e o telefone.
+4. Clique em Salvar.
+Como emitir um pedido
+1. Abra o menu Pedidos.
+2. Selecione o cliente.
+3. Adicione os produtos ao pedido.
+4. Se o cliente pedir desconto, informe o percentual autorizado.
+5. Clique em Finalizar pedido.

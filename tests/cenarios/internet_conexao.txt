@@ -1,0 +1,22 @@
+Como conectar o computador à internet
+Este guia explica como conectar um computador à internet usando Wi-Fi ou cabo Ethernet.
+Conexão por Wi-Fi
+1. Clique no ícone de rede na barra de tarefas.
+2. Verifique se o Wi-Fi está ativado. Caso não esteja, clique no botão Wi-Fi para ativá-lo.
+3. Selecione a rede Wi-Fi desejada na lista.
+4. Clique em Conectar.
+5. Digite a senha da rede e clique em Avançar.
+6. Se a senha estiver incorreta, digite a senha novamente.
+Conexão por cabo Ethernet
+1. Conecte uma ponta do cabo Ethernet na porta de rede do computador.
+2. Conecte a outra ponta do cabo no roteador ou modem.
+3. Caso o computador não tenha porta Ethernet, use um adaptador USB para Ethernet.
+4. Aguarde o Windows reconhecer a conexão.
+Verificação da conexão
+1. Abra o navegador e acesse um site qualquer.
+2. Se a página carregar, a conexão está funcionando.
+Solução de problemas
+1. Se a internet não funcionar, reinicie o roteador e o computador.
+2. Verifique se o cabo está bem conectado ou se a senha do Wi-Fi está correta.
+3. Execute a solução de problemas de rede do Windows.
+4. Se o problema continuar, entre em contato com o provedor de internet.

@@ -1,0 +1,9 @@
+Procedimento: impressora não imprime
+1. Verifique se a impressora está ligada.
+2. Caso contrário, ligue a impressora no botão de energia.
+3. Confirme se há papel na bandeja.
+4. Se não houver papel, coloque papel na bandeja.
+5. Envie uma página de teste.
+6. A página foi impressa?
+7. Se sim, encerre o atendimento.
+8. Se não, reinstale o driver da impressora e envie a página de teste novamente.

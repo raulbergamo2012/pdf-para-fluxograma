@@ -1,0 +1,17 @@
+EXEMPLOS-MODELO
+===============
+Os arquivos .mmd desta pasta são fluxogramas de referência. Eles NÃO aparecem no resultado:
+servem para a IA (Claude, OpenAI ou Ollama) entender o FORMATO esperado.
+A cada geração, os exemplos são enviados junto com as regras, com a instrução de imitar a
+estrutura e nunca copiar o conteúdo.
+
+Para adicionar um novo modelo:
+  1. Crie um arquivo .mmd nesta pasta (ex.: 04-meu-processo.mmd) com o código Mermaid.
+  2. Use as linhas que começam com %% para descrever o padrão que ele ensina.
+  3. Reinicie o app (feche a janela preta e abra o INICIAR.bat de novo).
+
+Dica: 3 a 5 bons exemplos são suficientes. Exemplos demais deixam a geração mais lenta.
+
+Os 3 modelos atuais foram transcritos das imagens de referência enviadas
+(atendimento na loja, recrutamento e rotina do dia), com textos encurtados
+para o padrão do projeto (até 5 palavras por bloco).

@@ -1,0 +1,39 @@
+Formatação de computador com Windows 10 ou 11
+Objetivo: reinstalar o Windows do zero usando um pendrive de instalação.
+
+Etapa 1: Backup dos arquivos
+1. Copie documentos, fotos e arquivos importantes para um HD externo ou para a nuvem.
+2. Anote a chave do produto e as senhas importantes.
+Atenção: a formatação apaga todos os dados do disco.
+
+Etapa 2: Preparação do pendrive
+1. Conecte um pendrive de no mínimo 8 GB a outro computador.
+2. Baixe a Ferramenta de Criação de Mídia no site da Microsoft.
+3. Execute a ferramenta e aceite os termos de licença.
+4. Clique em Concluir quando a gravação terminar.
+5. Escolha a opção Criar mídia de instalação.
+6. Selecione o idioma, a edição e a arquitetura.
+7. Selecione a unidade do pendrive.
+8. Aguarde o download e a gravação dos arquivos.
+
+Etapa 3: Inicialização pelo pendrive
+1. Conecte o pendrive no computador que será formatado.
+2. Ligue o computador e pressione repetidamente a tecla F12, F8 ou Esc para abrir o menu de boot.
+3. Verifique se o pendrive foi reconhecido.
+4. Caso contrário, verifique a conexão do pendrive e reinicie o computador.
+5. Selecione o pendrive no menu de boot.
+
+Etapa 4: Instalação do Windows
+1. Escolha o idioma e clique em Instalar agora.
+2. Informe a chave do produto. Se não tiver a chave, clique em Não tenho a chave do produto.
+3. Selecione a opção Personalizada: instalar apenas o Windows.
+4. Exclua as partições do disco principal e selecione o espaço não alocado.
+5. Clique em Avançar e aguarde a instalação.
+6. Se ocorrer algum erro durante a instalação, anote o código do erro e reinicie a instalação.
+
+Etapa 5: Configuração final
+1. Configure a região, o teclado e a rede.
+2. Crie a conta de usuário e a senha.
+3. Instale as atualizações do Windows Update.
+4. Instale os drivers que estiverem faltando.
+5. Restaure os arquivos do backup.
