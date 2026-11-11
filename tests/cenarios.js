@@ -143,6 +143,45 @@ async function scenario(name, label, fn) {
     });
   }
 
+  // ---- Funcional (raias): lógica e desenho claros
+  const laneLayout = (r) => autoLayout(r.code, { type: 'raias', title: 'T' });
+  await scenario('instalar_ps5', 'Funcional: métodos alternativos por etapa', () => {
+    const r = generate('instalar_ps5', 'raias'); common(r);
+    const vert = r.byLabel(/^Inserir disco com etiqueta/);
+    assert(vert && !r.has(vert, r.byLabel(/^Inserir disco do jogo/)), '"voltada para a esquerda" não vira retorno');
+    assert(r.has(vert, r.byLabel(/^Instalação inicia/)), 'etiqueta → instalação');
+    const net = r.byLabel(/conectado à internet\?/);
+    assert(net && !r.has(net, r.byLabel(/^Instalação inicia/), 'Não'), 'Não da internet não inventa retorno');
+    assert(r.byLabel(/^Verificar console em Modo de Repouso/), '"Certifique-se" sem consequência vira passo');
+    const m = laneLayout(r), P = (re) => m.nodes.find((n) => re.test(n.text || ''));
+    const d = P(/Qual instalação/), heads = [/^Ligar console/, /^Acessar PlayStation/, /^Abrir aplicativo/].map(P);
+    assert(heads.every((n) => Math.abs(n.y + n.h / 2 - (d.y + d.h / 2)) < 4), 'ramos começam na altura do losango (sem subir)');
+    const fim = m.nodes.find((n) => n.id === 'FIM');
+    assert(m.nodes.filter((n) => n.shape !== 'container').every((n) => n === fim || n.y < fim.y), 'Fim na última linha');
+    assert(m.edges.filter((e) => e.from === 'D3').every((e) => e.label), 'todas as saídas do losango com rótulo');
+  });
+  await scenario('empresa_reembolso', 'Funcional: cada ação na raia de quem faz', () => {
+    const r = generate('empresa_reembolso', 'raias'); common(r);
+    const grp = (re) => r.m.groups.find((g) => g.id === r.byLabel(re)?.group)?.title;
+    assert.strictEqual(grp(/^Corrigir solicitação/), 'Colaborador', 'colaborador corrige');
+    assert.strictEqual(grp(/^Notificar colaborador/), 'Gestor', 'gestor notifica');
+    const m = laneLayout(r);
+    const e = m.edges.find((x) => x.from === r.byLabel(/^Corrigir/).id && x.to === r.byLabel(/^Analisar/).id);
+    assert(e && e.fromPort === 'top' && e.toPort === 'left', 'retorno sai por cima e entra pela lateral (não pela linha do losango)');
+  });
+  await scenario('atendimento', 'Funcional: mesma atividade em raias diferentes sem aviso', () => {
+    const text = fs.readFileSync(path.join(dir, 'atendimento.txt'), 'utf8');
+    const code = heuristicMermaid(text, 'a', 'TD', 'raias', { report: {} });
+    const fin = finalize(code, { text, type: 'raias' });
+    assert(!fin.issues.some((i) => /aparece 2 vezes/.test(i.message)), 'sem aviso de duplicado entre raias');
+  });
+  await scenario('textos', 'complemento do substantivo não fica cortado', () => {
+    const { shortenAction } = require('../lib/shorten');
+    assert.strictEqual(shortenAction('Alinhe a marcação dourada do processador com a marcação do soquete'), 'Alinhar marcação do processador com marcação do soquete');
+    assert.strictEqual(shortenAction('Conecte o monitor, o teclado e o cabo de energia.'), 'Conectar monitor, teclado e cabo de energia');
+    assert.strictEqual(shortenAction('Escolha um nome de usuário que não esteja em uso'), 'Escolher nome de usuário');
+  });
+
   for (const [ok, name, label] of results) console.log(`${ok} ${name.padEnd(20)} ${label}`);
   console.log(results.every((r) => r[0] === '✔') ? `\n✔ ${results.length} cenários aprovados` : '\n✘ há cenários com falha');
 })();

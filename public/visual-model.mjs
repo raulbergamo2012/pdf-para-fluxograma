@@ -86,6 +86,7 @@ export const SHAPES = {
   container: { name: 'Contêiner com título', w: 320, h: 220, valign: 'top', bold: true,
     draw: (x, y, w, h, n) => n?.band
       ? `<rect x="${x}" y="${y}" width="${w}" height="${h}"/><rect x="${x}" y="${y}" width="${w}" height="${n.head || 40}" fill="#0b2e3c" fill-opacity=".07" stroke="none"/>${path(`M${x} ${y + (n.head || 40)}H${x + w}`)}`
+        + (n.accent ? `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="4" fill="${n.accent}" fill-opacity=".85" stroke="none"/>` : '')
       : `<rect x="${x}" y="${y}" width="${w}" height="${h}"/>${path(`M${x} ${y + 30}H${x + w}`)}`,
     box: (x, y, w, h, n) => (n?.band ? { x: x + 8, y: y + 2, w: w - 16, h: (n.head || 40) - 2 } : { x, y: y + 2, w, h: 28 }) },
   lane: { name: 'Raia (swimlane)', w: 220, h: 360, valign: 'top', bold: true, asContainer: true,
@@ -272,6 +273,14 @@ function pathD(pts, kind) {
 /** Ponto do rótulo: perto da saída nos losangos, no meio do trecho mais longo nos demais */
 export function labelPoint(model, e, pts) {
   const A = model.nodes.find((n) => n.id === e.from);
+  if (e.labelAt === 'end' && pts.length >= 2) {
+    // decisão com várias saídas que dividem o mesmo trecho: rótulo no trecho final, junto do destino
+    const [x1, y1] = pts[pts.length - 2], [x2, y2] = pts[pts.length - 1];
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const horizontal = Math.abs(y2 - y1) < 0.5;
+    const back = Math.min(len / 2, horizontal ? measure(e.label || '', 13, true) / 2 + 16 : 26);
+    return [x2 - ((x2 - x1) / len) * back, y2 - ((y2 - y1) / len) * back];
+  }
   if (A?.shape === 'diamond' && pts.length >= 2) {
     const [x1, y1] = pts[0], [x2, y2] = pts[1];
     const len = Math.hypot(x2 - x1, y2 - y1) || 1;

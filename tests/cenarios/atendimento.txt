@@ -1,0 +1,20 @@
+             Atendimento de chamados de suporte
+Abertura
+1. O cliente abre um chamado relatando o problema.
+2. A equipe de vendas analisa o chamado.
+3. Se for uma questão comercial, a equipe de vendas resolve e responde ao cliente.
+4. Caso contrário, encaminha o chamado para o suporte técnico.
+
+Análise técnica
+5. O suporte técnico verifica se o problema é novo.
+6. Caso não seja, aplica a solução conhecida e responde ao cliente.
+7. O tester reproduz o problema em ambiente de teste.
+8. Se o problema for reproduzido, registra o relatório de erro.
+9. Caso contrário, solicita mais detalhes ao cliente.
+
+Correção
+10. O desenvolvimento faz a análise técnica do erro.
+11. O desenvolvimento corrige o problema.
+12. O tester valida a correção.
+13. O cliente confirma a solução.
+

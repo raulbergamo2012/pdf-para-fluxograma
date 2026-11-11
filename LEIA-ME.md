@@ -16,6 +16,27 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.1: Fluxograma Funcional mais claro
+
+Ajustes feitos só no que afeta o **Funcional (raias)**. Os outros tipos continuam como na 4.0.
+
+| Problema | Causa | Correção |
+|---|---|---|
+| Ramos de "Qual instalação usar?" começavam no topo das colunas e as setas subiam e cruzavam a tela | Nas raias por etapa, todo passo vindo de outra coluna ia para a 1ª linha | Vindo de um losango (métodos alternativos), o ramo começa **na altura do losango**, e a seta segue reta para o lado (`public/swimlane.mjs`) |
+| Saídas do losango sem rótulo ou com rótulos empilhados | Várias saídas pela mesma ponta | O rótulo vai para o trecho final de cada seta, junto do destino; a bifurcação passa **por cima** dos blocos, sem cruzar as linhas que descem nas raias |
+| Fim no meio do diagrama, com setas longas atravessando raias | O Fim ficava na linha do último passo que chegava nele | Quando chegam caminhos de outras raias, o Fim vai para a **última linha** e os caminhos se juntam num tronco só |
+| Setas que chegam ao mesmo bloco em linhas paralelas quase coladas | Cada passagem pelo corredor deslocava a próxima | Setas com o mesmo destino usam a **mesma linha** do corredor |
+| Passagem de uma etapa para a outra entrava no mesmo ponto que o retorno ("Tela da BIOS aparece?" → Não) | As duas usavam a lateral do bloco | A passagem entra **por cima**; a lateral fica para os retornos |
+| Retorno para outra raia passava por cima da linha do losango ("Corrigir" → "Analisar solicitação") | Retorno entrava por baixo do destino | Sai por cima, sobe por um corredor livre e entra pela lateral virada para a origem |
+| "Corrigir solicitação" na raia do Gestor | Ações de um ramo ficavam todas com o responsável atual | "o colaborador é notificado e corrige…": notificar fica com quem age e corrigir vai para a raia do **Colaborador** (`lib/heuristic.js`) |
+| "Inserir disco com etiqueta voltada…" voltava para "Inserir disco" | "voltada" era lido como "voltar" (retorno) | "voltada/voltado" não é mais retorno |
+| "Console está conectado à internet?" Não → voltava para o passo anterior | Verificação com só o "Sim" descrito virava laço inventado | O Não segue para o próximo passo; "Certifique-se de que X" sem consequência vira o passo "Verificar X" |
+| "Conectar monitor, teclado e cabo", "…com marcação", "…que não esteja" | Corte em 7 palavras no meio do complemento | O complemento curto é completado ("cabo de energia", "marcação do soquete"); a oração com "que" cortada sai inteira (`lib/shorten.js`) |
+| Aviso "aparece 2 vezes" para "Responder ao cliente" de vendas e de suporte | A checagem ignorava a raia | Mesma atividade em raias diferentes não gera aviso (`lib/validate.js`) |
+| Colunas difíceis de seguir | Todas as raias com o mesmo fundo | Raias com fundo alternado e faixa de cor no cabeçalho |
+
+Testes novos em `tests/cenarios.js`: `instalar_ps5`, `empresa_reembolso`, `atendimento` e `textos`.
+
 ## Novidades da versão 4.0: gerador inteligente em camadas
 
 ### Arquitetura (as 5 camadas)

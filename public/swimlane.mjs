@@ -104,7 +104,9 @@ export function autoLayout(code, opts = {}) {
     let r = 0;
     // mesma raia: avança uma linha; outra raia (só no Funcional): pode ficar na mesma linha
     // colunas do Processo: cada etapa começa no topo da sua coluna
-    preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || phases ? 0 : rank.get(p)); });
+    // fases: a etapa seguinte começa no topo da coluna — exceto quando vem de um losango (métodos alternativos):
+    // aí o ramo começa NA ALTURA do losango, e a seta segue reta para o lado, sem subir
+    preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || (phases && g.nodes.get(p)?.kind !== 'decision') ? 0 : rank.get(p)); });
     if (type === 'processo' && !columns) r = Math.max(r, ...[...rank.values()].map((x) => x + 1), 0);   // coluna única e reta
     if (columns) r = Math.max(r, ...steps.filter((o) => rank.has(o) && laneOf.get(o) === lane).map((o) => rank.get(o) + 1), 0);
     while (cell(lane, r).some((o) => a.has(o) || anc.get(o)?.has(id))) r++;
@@ -112,6 +114,19 @@ export function autoLayout(code, opts = {}) {
     cell(lane, r).push(id);
   }
   for (const id of steps) if (!rank.has(id)) { rank.set(id, 0); cell(laneOf.get(id), 0).push(id); }
+  // Funcional: o Fim fica SEMPRE na última linha — os caminhos descem até ele, em vez de uma seta longa atravessar
+  // as raias no meio do diagrama
+  if (useLanes && !LR) {
+    // (só quando chegam caminhos de OUTRAS raias; se o Fim vem só da própria raia, fica logo abaixo do último passo)
+    const ends = steps.filter((id) => /^fim/i.test(id) && !flowEdges.some((e) => e.from === id)
+      && flowEdges.some((e) => e.to === id && laneOf.get(e.from) !== laneOf.get(id)));
+    const last = Math.max(0, ...steps.filter((id) => !ends.includes(id)).map((id) => rank.get(id)));
+    if (ends.length) {
+      for (const id of ends) rank.set(id, last + 1);
+      cells.clear();
+      for (const id of steps) cell(laneOf.get(id), rank.get(id)).push(id);
+    }
+  }
   // ETAPAS (fluxograma ramificado com subgrafos de etapa): cada etapa ocupa suas próprias linhas, para o bloco
   // com o título da etapa nunca se sobrepor ao da etapa seguinte (ex.: o "Sim" fica na etapa 4 e o "Não" já é etapa 5)
   if (staged) {
@@ -148,7 +163,7 @@ export function autoLayout(code, opts = {}) {
     if (k === 'diamond') size.set(id, { w: Math.max(150, Math.min(190, tw * 1.55 + 30)), h: Math.max(84, lines.length * 18 + 52) });
     else if (k === 'terminator') size.set(id, { w: Math.max(110, tw + 44), h: 42 });
     else if (k === 'note') size.set(id, { w: Math.max(130, Math.min(180, tw + 28)), h: Math.max(42, lines.length * 17 + 20) });
-    else size.set(id, { w: Math.max(130, Math.min(170, tw + 30)) + (g.nodes.get(id)?.open === '[/' ? 24 : 0), h: Math.max(48, lines.length * 18 + 22) });
+    else size.set(id, { w: Math.max(130, Math.min(170, tw + 30)) + (g.nodes.get(id)?.open === '[/' ? 36 : 0), h: Math.max(48, lines.length * 18 + 22) });
   }
   const even = (v) => 2 * Math.round(v / 2);
   for (const [id, sz] of size) size.set(id, { w: even(sz.w), h: even(sz.h) });
@@ -210,7 +225,9 @@ export function autoLayout(code, opts = {}) {
   if (useLanes) lanes.forEach((ln, l) => {
     const box = LR ? { x: OX, y: OY + laneStart[l], w: mainLen, h: laneSize[l] } : { x: OX + laneStart[l], y: OY, w: laneSize[l], h: mainLen };
     for (const k of Object.keys(box)) box[k] = Math.round(box[k]);
-    nodes.push({ id: 'RAIA_' + (ln.id || l), shape: 'container', band: true, head: HEAD, ...box, text: decode(ln.label), fill: P.laneFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14 });
+    // raias alternam um fundo levemente diferente e têm uma faixa de cor no cabeçalho: dá para seguir cada
+    // responsável/etapa de cima a baixo sem confundir as colunas
+    nodes.push({ id: 'RAIA_' + (ln.id || l), shape: 'container', band: true, head: HEAD, ...box, text: decode(ln.label), fill: l % 2 ? (P.laneAltFill || '#f6f8fa') : P.laneFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14, accent: P.laneAccent || P.stroke });
   });
   const style = (id) => {
     const k = kindOf(id), c = g.classes.get(id) || new Set();
@@ -328,12 +345,17 @@ export function autoLayout(code, opts = {}) {
     const others = inLane.filter((n) => n !== B);
     const edgeX = fromLeft ? Math.min(B.x, ...others.map((n) => n.x)) : Math.max(B.x + B.w, ...others.map((n) => n.x + n.w));
     // cada passagem que já usa o corredor desta raia desloca a próxima 10px (linhas paralelas, nunca sobrepostas)
-    const ckey = `${l}:${fromLeft}`, used = corridorUse.get(ckey) || 0;
-    const x = Math.round(fromLeft ? Math.max(lx1 + 4, edgeX - 44) + used * 10 : Math.min(lx2 - 4, edgeX + 44) - used * 10);
+    // setas que chegam ao MESMO bloco usam a mesma linha do corredor (juntam-se num tronco só, em vez de linhas
+    // paralelas quase coladas)
+    const ckey = `${l}:${fromLeft}`, used = corridorUse.get(ckey) || 0, tkey = `${ckey}:${laneNodeId}`;
+    const shared = corridorTarget.get(tkey);
+    const x = shared ?? Math.round(fromLeft ? Math.max(lx1 + 4, edgeX - 44) + used * 10 : Math.min(lx2 - 4, edgeX + 44) - used * 10);
     if (fromLeft ? x >= edgeX - 6 : x <= edgeX + 6) return null;
-    const take = (r) => { if (r) corridorUse.set(ckey, used + 1); return r; };
+    const take = (r) => { if (r && shared == null) { corridorUse.set(ckey, used + 1); corridorTarget.set(tkey, x); } return r; };
     const ax = fromLeft ? A.x + A.w : A.x, bx = fromLeft ? B.x : B.x + B.w;
-    if (B.shape === 'diamond' || kindOf(laneNodeId) === 'diamond') {
+    // losango, ou 1º bloco de uma etapa (fases): entra por cima — a lateral fica livre para os retornos da raia
+    const laneHead = phases && !steps.some((o) => o !== laneNodeId && laneOf.get(o) === l && rank.get(o) < rank.get(laneNodeId));
+    if (B.shape === 'diamond' || kindOf(laneNodeId) === 'diamond' || laneHead) {
       // losango: as pontas laterais são das saídas Sim/Não — a entrada vem por cima
       const ty = Math.round(B.y - Math.min(22, GAP_MAIN / 2)), cx = Math.round(B.x + B.w / 2);
       const segsD = [[ax, ay, x, ay], [x, ay, x, ty], [x, ty, cx, ty]];
@@ -362,6 +384,7 @@ export function autoLayout(code, opts = {}) {
     return take({ fromPort: fromLeft ? sides.b : sides.a, toPort: fromLeft ? sides.a : sides.b, points: [[x1, ay], [x1, best.gy], [x, best.gy], [x, by]] });
   };
   const corridorUse = new Map();
+  const corridorTarget = new Map();
   const routeCache = new Map();
   const laneRouteOnce = (e, A, B, laneNodeId, mode) => {
     const k = `${e.from}>${e.to}:${mode}`;
@@ -369,6 +392,28 @@ export function autoLayout(code, opts = {}) {
     return routeCache.get(k);
   };
   let sourceId = null;
+
+  const backCross = (A, B) => {
+    const fromLeft = A.x + A.w / 2 < B.x + B.w / 2;
+    const ax = Math.round(A.x + A.w / 2), by = Math.round(B.y + B.h / 2), bx = fromLeft ? B.x : B.x + B.w;
+    // corredor: a meio caminho entre o destino e o bloco mais próximo do lado da origem, na altura do destino
+    const sideNodes = [...pos.values()].filter((n) => n !== B && n.y < by + 4 && n.y + n.h > by - 4 && (fromLeft ? n.x + n.w <= B.x : n.x >= B.x + B.w));
+    const near = fromLeft ? Math.max(A.x + A.w, ...sideNodes.map((n) => n.x + n.w)) : Math.min(A.x, ...sideNodes.map((n) => n.x));
+    let cx = Math.round(fromLeft ? Math.max(near + 24, (near + B.x) / 2) : Math.min(near - 24, (near + B.x + B.w) / 2));
+    // não corre em cima da divisa entre raias
+    for (let l = 1; l < nLanes; l++) { const bd = OX + laneStart[l]; if (Math.abs(cx - bd) < 14) cx += fromLeft ? 22 : -22; }
+    if (fromLeft ? cx >= B.x - 8 : cx <= B.x + B.w + 8) return null;
+    const levels = [...new Set([A.y - 16, ...[...pos.values()].map((n) => n.y + n.h + 14)].map(Math.round))].filter((y) => y <= A.y - 10 && y > by + 10);
+    let best = null;
+    for (const gy of levels) {
+      const path = [[ax, A.y, ax, gy], [ax, gy, cx, gy], [cx, gy, cx, by], [cx, by, bx, by]];
+      if (hitsAny(path, A, B)) continue;
+      const len = Math.abs(A.y - gy) + Math.abs(gy - by);
+      if (!best || len < best.len) best = { gy, len };
+    }
+    if (!best) return null;
+    return { fromPort: sides.bwd, toPort: fromLeft ? sides.a : sides.b, points: [[ax, best.gy], [cx, best.gy], [cx, by]] };
+  };
 
   // ------------------------------------------------------------ setas (ângulo reto, saindo pelo lado certo)
   const edges = [];
@@ -401,6 +446,11 @@ export function autoLayout(code, opts = {}) {
       // raias: passagem para outra raia mais abaixo — sai pela lateral, cruza a borda da raia em 90°, desce pelo
       // corredor livre da raia de destino e entra pela LATERAL do bloco (sem atravessar textos)
       ({ fromPort, toPort, points } = laneRouteOnce(e, A, B, e.to, 'cross'));
+    } else if (useLanes && !LR && laneOf.get(e.from) !== laneOf.get(e.to) && (back.has(e) || dMain < -4) && backCross(A, B)) {
+      // retorno para OUTRA raia, mais acima ("Corrigir solicitação" → "Analisar solicitação"): sai por cima, sobe pelo
+      // corredor ao lado do destino e entra pela lateral virada para a origem — sem passar por cima da linha que
+      // desce do destino nem da seta que chega na origem
+      ({ fromPort, toPort, points } = backCross(A, B));
     } else if (back.has(e) || dMain < -4) {
       // retorno: na mesma coluna faz um "U" pela lateral; em outra coluna sai de lado e entra por baixo
       if (Math.abs(dCross) < 4) { fromPort = sides.a; toPort = sides.a; } else { fromPort = crossSide; toPort = sides.fwd; }
@@ -413,7 +463,22 @@ export function autoLayout(code, opts = {}) {
         const y = A.y + A.h / 2;
         const mids = [...pos.values()].filter((n) => n !== A && n !== B && n.y < y && n.y + n.h > y
           && (right ? n.x > A.x && n.x + n.w < B.x : n.x + n.w < A.x && n.x > B.x + B.w));
-        if (mids.length) {
+        // por CIMA dos blocos do meio (se nenhum recebe seta por cima): não cruza as linhas que descem nas raias
+        const midIds = [...pos.entries()].filter(([, n]) => mids.includes(n)).map(([id]) => id);
+        const topFree = midIds.length && !fwd.some((x) => midIds.includes(x.to) && laneOf.get(x.from) === laneOf.get(x.to));
+        if (topFree) {
+          const first = right ? mids.reduce((a, b) => (a.x < b.x ? a : b)) : mids.reduce((a, b) => (a.x + a.w > b.x + b.w ? a : b));
+          const last = right ? mids.reduce((a, b) => (a.x + a.w > b.x + b.w ? a : b)) : mids.reduce((a, b) => (a.x < b.x ? a : b));
+          // a bifurcação fica logo depois do rótulo da saída (o ramo reto mantém o rótulo na ponta do losango)
+          const lw = e.label ? measure(decode(e.label), 13, true) + 40 : 30;
+          const cx = Math.round(right ? Math.min(first.x - 22, A.x + A.w + lw) : Math.max(first.x + first.w + 22, A.x - lw));
+          const gy = Math.round(Math.min(A.y, ...mids.map((n) => n.y)) - 16);
+          const mx = Math.round(right ? (last.x + last.w + B.x) / 2 : (last.x + B.x + B.w) / 2);
+          const ax = right ? A.x + A.w : A.x, bx = right ? B.x : B.x + B.w, by = B.y + B.h / 2;
+          const over = [[ax, y, cx, y], [cx, y, cx, gy], [cx, gy, mx, gy], [mx, gy, mx, by], [mx, by, bx, by]];
+          if (!hitsAny(over, A, B) && (right ? cx > ax + 8 : cx < ax - 8)) { fromPort = right ? sides.b : sides.a; toPort = right ? sides.a : sides.b; points = [[cx, y], [cx, gy], [mx, gy], [mx, by]]; }
+        }
+        if (mids.length && !points) {
           const edgeX = right ? Math.max(...mids.map((n) => n.x + n.w)) : Math.min(...mids.map((n) => n.x));
           const mx = Math.round((edgeX + (right ? B.x : B.x + B.w)) / 2);
           const gy = Math.max(A.y + A.h, ...mids.map((n) => n.y + n.h)) + Math.round(GAP_MAIN / 2);
@@ -441,6 +506,14 @@ export function autoLayout(code, opts = {}) {
     (usedSide.get(e.from) || usedSide.set(e.from, new Set()).get(e.from)).add(fromPort);
     edges.push({ id: 'e' + (i + 1), from: e.from, to: e.to, fromPort, toPort, ...(points ? { points } : {}), label: decode(e.label), kind: 'orth', dashed: e.type.startsWith('-.'), arrowEnd: true, stroke: P.line });
   });
+  // losango com várias saídas pela MESMA ponta (ex.: "Qual instalação usar?" → Disco / Digital / Remota): os rótulos
+  // ficariam empilhados na ponta; vão para o trecho final de cada seta, junto do destino
+  const byPort = new Map();
+  for (const e of edges) if (kindOf(e.from) === 'diamond' && e.label) (byPort.get(e.from + ':' + e.fromPort) || byPort.set(e.from + ':' + e.fromPort, []).get(e.from + ':' + e.fromPort)).push(e);
+  for (const list of byPort.values()) if (list.length > 1) {
+    const straight = list.filter((e) => !e.points);
+    list.forEach((e) => { if (e.points || straight.length > 1) e.labelAt = 'end'; });
+  }
   let k = 0;
   for (const [n, s] of noteOf) {
     if (!s || !pos.get(s) || !pos.get(n)) continue;

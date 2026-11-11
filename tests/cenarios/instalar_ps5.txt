@@ -1,0 +1,46 @@
+           Guia Passo a Passo: Como Instalar Jogos no PS5
+         Criado por Equipe de Suporte, última atualização em 30/10/2026
+
+         Visão geral
+         Este guia explica como instalar jogos no PlayStation 5 usando mídia física (disco) ou compra
+         digital.
+
+         Antes de começar
+         1. Certifique-se de que há espaço suficiente no SSD do console.
+         Caso contrário, exclua jogos ou aplicativos que não utiliza.
+
+         Instalação por disco (mídia física)
+         1. Ligue o console e insira o disco do jogo.
+         2. Se o console estiver na vertical, insira o disco com a etiqueta voltada para a esquerda.
+         3. A instalação iniciará automaticamente.
+         4. Verifique se o console está conectado à internet.
+         5. Caso esteja, o download da versão mais recente iniciará em paralelo.
+         Conclusão: quando a barra de progresso terminar, o jogo estará pronto.
+
+         Instalação digital (PlayStation Store)
+         1. Acesse a PlayStation Store no menu inicial.
+         2. Busque o jogo desejado.
+         3. Se você já tiver comprado o jogo, selecione Baixar.
+         Caso contrário, conclua a compra com seu método de pagamento.
+         4. Acompanhe o progresso em Downloads e Uploads.
+
+         Instalação remota pelo celular
+         Você pode iniciar o download mesmo longe do console.
+         1. Abra o aplicativo PlayStation App no celular.
+         2. Certifique-se de que o console está em Modo de Repouso com acesso à internet ativado.
+         3. Vá até a aba Biblioteca.
+         4. Selecione o jogo desejado.
+         5. Toque no botão Baixar para o console.
+
+         Recursos úteis
+                                   Recurso         Descrição            Como Acessar
+                                   Biblioteca      Seus jogos           Selecionar Jogo
+                                   Downloads       Fila de instalação   Central de Controle
+
+         Observação: jogos com mais de 100 GB podem levar várias horas para instalar.
+
+
+
+
+Confluence · Suporte Games · Exportado em 02/11/2026                                                    Página 1
+
