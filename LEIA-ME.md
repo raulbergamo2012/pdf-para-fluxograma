@@ -16,6 +16,36 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.7: métodos alternativos, procedimentos complementares e validação lógica
+
+**Métodos alternativos** (`lib/heuristic.js`)
+- A frase que anuncia as opções ("Existem três métodos para instalar: pelo disco, pela loja digital ou pelo download
+  remoto"; "pode pagar de três formas: cartão, boleto ou Pix") define **quantos** caminhos existem e qual seção é cada
+  um, mesmo sem título em comum. A pergunta usa a palavra do documento: "Qual método de instalação?",
+  "Qual forma de pagamento?". Sem anúncio, "Método 1/2/3" e "Opção A/B" continuam valendo (sem números nos rótulos).
+- Cada método fica no seu caminho; os caminhos só se juntam na primeira atividade comum.
+- Faixas de valor ("até R$ 500 / entre R$ 500 e R$ 5.000 / acima de R$ 5.000") viram **uma** decisão com 3 saídas.
+
+**Leitura do PDF**: subitens "4.1, 4.2…" são lidos (antes eram descartados) e "4. Concluir a instalação" com subitens é
+título de seção, não atividade. "Deixe água…", "Adquira…" e outros imperativos são reconhecidos.
+
+**Procedimentos complementares**: "Dicas"/"Observações" viram uma nota ao lado do fluxo (recomendado/opcional), não
+etapas; "Solução de problemas" vira um caminho próprio que começa onde o documento manda ("siga o procedimento de
+solução de problemas") e termina em "Fim sem conclusão" com aviso — nunca roda em sequência depois do sucesso.
+Requisito de estado ("o console precisa estar em repouso") vira observação da atividade. "O jogo aparece na tela
+inicial" é resultado esperado (leva ao Fim), não atividade.
+
+**Validação lógica (14 verificações)**: métodos ligados corretamente; perguntas coerentes (sem títulos/numeração);
+Sim/Não sem inversão; continuidade (ausências sinalizadas); atividades exclusivas; convergências justificadas;
+opcionais/recomendações; duplicadas; dependências ("Após X…"); descrições; responsáveis; conexões válidas;
+encerramentos; ciclos. A negação vale só para o que ela antecede ("concluído **sem erros**" = sucesso).
+
+**Desenho**: losango com 3+ respostas desce os destinos uma linha e as respostas do mesmo lado compartilham o tronco
+(rótulo junto do destino); notas complementares juntas em uma só.
+
+**Testes**: 78 cenários (novos: linear, 3 métodos com solução de problemas, formas de pagamento, "Método 1/2/3",
+alçadas com 3 saídas e a comparação da estrutura intermediária com o desenho em todos os documentos).
+
 ## Novidades da versão 4.0.6: lógica das decisões, contexto dos caminhos e validação semântica
 
 **Decisões pelo significado, não pelas palavras** (`lib/semantics.js`, novo)

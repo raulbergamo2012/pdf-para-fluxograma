@@ -1,0 +1,7 @@
+Aprovação de despesas por alçada
+
+1. O colaborador registra a despesa no sistema.
+2. Se a despesa for de até R$ 500, o coordenador aprova.
+3. Se a despesa for entre R$ 500 e R$ 5.000, o gerente aprova.
+4. Se a despesa for acima de R$ 5.000, o diretor aprova.
+5. O financeiro realiza o reembolso.

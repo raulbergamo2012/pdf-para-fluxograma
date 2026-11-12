@@ -127,7 +127,10 @@ export function autoLayout(code, opts = {}) {
         const side = /^n[aã]o\b/i.test(de.label || '') ? -1 : /^sim\b/i.test(de.label || '') ? 1 : 0;
         return side !== 0 && side === -Math.sign(lane - laneOf.get(p));
       };
-      const farLane = (p) => (useLanes && !LR && type === 'raias' && !phases && (Math.abs(laneOf.get(p) - lane) > 1 || g.nodes.get(id)?.kind === 'decision' || branchAway(p)) ? 1 : 0);
+      // …e as saídas de um losango com 3+ respostas que vão para outras raias ficam uma linha abaixo (o rótulo de cada
+      // resposta fica no trecho vertical, junto do destino, sem passar por cima de caixas)
+      const multiOut = (p) => g.nodes.get(p)?.kind === 'decision' && fwd.filter((e) => e.from === p).length >= 3 && laneOf.get(p) !== lane;
+      const farLane = (p) => (useLanes && !LR && type === 'raias' && !phases && (Math.abs(laneOf.get(p) - lane) > 1 || g.nodes.get(id)?.kind === 'decision' || branchAway(p) || multiOut(p)) ? 1 : 0);
       preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || (phases && g.nodes.get(p)?.kind !== 'decision') ? 0 : rank.get(p) + farLane(p)); });
       if (type === 'processo' && !columns) r = Math.max(r, ...[...rank.values()].map((x) => x + 1), 0);   // coluna única e reta
       if (columns) r = Math.max(r, ...steps.filter((o) => rank.has(o) && laneOf.get(o) === lane).map((o) => rank.get(o) + 1), 0);
@@ -621,7 +624,9 @@ export function autoLayout(code, opts = {}) {
     const diamondL = !handDown && laneCols && kindOf(e.from) === 'diamond' && laneOf.get(e.from) !== laneOf.get(e.to) && !back.has(e)
       && dMain > 4 && bottomExit.get(e.from) !== e && B.shape !== 'diamond' && (() => {
         const side = dCross > 0 ? sides.b : sides.a;
-        if ((usedSide.get(e.from) || new Set()).has(side)) return null;
+        // losango com 3+ respostas: as que vão para o mesmo lado compartilham o tronco (cada uma desce no seu destino)
+        const many = flowEdges.filter((x) => x.from === e.from && !back.has(x)).length >= 3;
+        if ((usedSide.get(e.from) || new Set()).has(side) && !many) return null;
         const pref = /^n[aã]o\b/i.test(e.label || '') ? sides.a : /^sim\b/i.test(e.label || '') ? sides.b : side;
         if (pref !== side && flowEdges.some((x) => x !== e && x.from === e.from && bottomExit.get(e.from) !== x && (/^n[aã]o\b/i.test(x.label || '') ? sides.a : sides.b) === side)) return null;
         const ay = Math.round(A.y + A.h / 2), tx = Math.round(dCross > 0 ? A.x + A.w : A.x), bx = Math.round(B.x + B.w / 2);

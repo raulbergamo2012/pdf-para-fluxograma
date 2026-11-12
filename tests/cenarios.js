@@ -310,7 +310,7 @@ async function scenario(name, label, fn) {
       assert(ap && ap.lane === 'Analista fiscal' && ap.decision_kind === 'humana', 'decisão humana na raia de quem decide');
       assert.strictEqual(fm.activities.filter((a) => a.type === 'decision').length, 2, '"decide se aprova" + "Se aprovado/Se reprovado" = UMA decisão (sem "Decidir")');
       assert(!r.byLabel(/^Decidir$/), 'sem bloco "Decidir"');
-      assert(chk(r, 9).ok, 'laço tem condição de saída');
+      assert(chk(r, 14).ok, 'laço tem condição de saída');
     });
 
     await scenario('sem_metodos', 'métodos alternativos: intro não vira ramo; condição de método preservada; repetição intencional', () => {
@@ -322,7 +322,7 @@ async function scenario(name, label, fn) {
       assert(em && /^Aguardar resposta/.test(to(r, em, 'Sim')?.label), 'atividade só do e-mail mantém a condição');
       assert.strictEqual(r.functional.activities.find((a) => /^Aguardar resposta/.test(a.label)).lane, 'Solicitante', '"aguarde a resposta automática" é do solicitante, não do sistema');
       assert(!r.issues.some((i) => /aparece 2 vezes/.test(i.message)), '"Anexar arquivo" nos dois métodos é repetição intencional (sem aviso)');
-      assert(chk(r, 7).ok && chk(r, 13).ok, 'verificações 7 e 13 passam');
+      assert(chk(r, 8).ok && chk(r, 5).ok && chk(r, 1).ok, 'verificações 1, 5 e 8 passam');
     });
 
     await scenario('sem_metodos2', 'convergência condicional: atividade de um método fica só no caminho dele', () => {
@@ -332,7 +332,7 @@ async function scenario(name, label, fn) {
       assert(g && r.has(g, ret, 'Sim'), '"Retire o disco" depois da junção ganha a condição do método');
       assert(r.has(g, r.byLabel(/^Reiniciar computador/), 'Não'), 'o download segue sem retirar disco');
       assert(r.has(r.byLabel(/^Abrir instalador/), r.byLabel(/^Aceitar termos/)) && r.has(r.byLabel(/^Abrir arquivo baixado/), r.byLabel(/^Aceitar termos/)), 'atividades comuns convergem');
-      assert(chk(r, 13).ok, 'verificação 13 passa');
+      assert(chk(r, 5).ok && chk(r, 1).ok, 'verificações 1 e 5 passam');
     });
 
     await scenario('sem_recuperacao', 'recuperação: verificação depois da correção, repetição com limite e saída', () => {
@@ -345,7 +345,7 @@ async function scenario(name, label, fn) {
       assert(r.has(p, r.byLabel(/^Reiniciar serviço/), 'Não'), 'ainda dentro do limite → repete a reinicialização');
       assert(/^Acionar equipe de plantão/.test(to(r, p, 'Sim')?.label), '"Persistindo a falha, acione…" é a saída do laço (sem bloco "Persistir falha")');
       assert(!r.byLabel(/^Persistir/), 'sem "Persistir falha"');
-      assert(chk(r, 9).ok, 'laço com condição de saída');
+      assert(chk(r, 14).ok, 'laço com condição de saída');
     });
 
     await scenario('sem_recuperacao_sem_fim', 'correção sem verificação descrita: segue em frente e avisa (sem laço inventado)', () => {
@@ -363,22 +363,112 @@ async function scenario(name, label, fn) {
       const a = r.byLabel(/autenticação/);
       assert(a, 'frase "Na aba Segurança, ative…" não some (era descartada como explicação)');
       assert(a.classes.has('revisar') && r.issues.some((i) => /Texto a revisar: "Ativar autenticação.*eta pas/.test(i.message)), 'pedaços sem prova ("eta pas") ficam marcados para revisão');
-      assert(!chk(r, 6).ok, 'verificação 6 aponta a descrição');
+      assert(!chk(r, 10).ok, 'verificação 10 aponta a descrição');
       assert(r.byLabel(/^Salvar alterações/) && !r.byLabel(/^Clicar em Salvar$/), '"Clique em Salvar" + "Salve as alterações" = um bloco');
       assert(r.byLabel(/^Preencher formulário/) && r.byLabel(/^Revisar formulário/), 'ações diferentes sobre o mesmo objeto continuam separadas');
+    });
+
+    await scenario('sem_linear', 'procedimento linear: sem decisões inventadas, todos os passos em ordem', () => {
+      const r = F('sem_linear');
+      assert(![...r.m.nodes.values()].some((n) => n.type === 'decision'), 'sem losangos');
+      const order = [/^Reservar sala/, /^Verificar se projetor/, /^Organizar cadeiras/, /^Deixar água e copos/, /^Enviar convite/].map((re) => r.byLabel(re));
+      assert(order.every(Boolean), 'os 5 passos aparecem (inclusive "Deixe água…", que era descartado)');
+      for (let i = 0; i + 1 < order.length; i++) assert(r.has(order[i], order[i + 1]), `ordem ${i + 1} → ${i + 2}`);
+    });
+
+    await scenario('sem_instalacao_metodos', 'métodos alternativos (3) independentes + convergência + verificação final + solução de problemas', () => {
+      const r = F('sem_instalacao_metodos');
+      const d = r.byLabel(/^Qual método de instalação\?$/);
+      assert(d, 'uma escolha "Qual método de instalação?" (sem título/numeração)');
+      assert.deepStrictEqual(out(r, d).map((e) => e.label).sort(), ['Disco', 'Download remoto', 'Loja digital'], 'quantidade de métodos vem do texto (3)');
+      const path = (a) => r.functional.activities.find((x) => x.id === a.id).path.find((c) => c.decision === d.id)?.answer;
+      assert.strictEqual(path(r.byLabel(/^Inserir disco/)), 'Disco');
+      assert.strictEqual(path(r.byLabel(/^Acessar loja/)), 'Loja digital');
+      assert.strictEqual(path(r.byLabel(/^Abrir aplicativo no celular/)), 'Download remoto');
+      const adq = r.byLabel(/Precisa adquirir jogo\?/);
+      assert(adq && path(adq) === 'Loja digital', '"Se necessário, adquira" = escolha opcional só na loja');
+      const wait = r.byLabel(/^Aguardar instalação/);
+      assert([/^Iniciar instalação dos dados/, /^Selecionar Baixar/, /^Tocar em Baixar/].every((re) => r.has(r.byLabel(re), wait)), 'os 3 caminhos convergem em "Aguardar instalação"');
+      assert(!path(wait), 'atividade comum fica fora dos caminhos exclusivos');
+      const fin = r.byLabel(/Instalação foi concluída\?/);
+      assert(r.has(wait, fin), 'verificação depois da espera (subitens 4.1–4.4 lidos)');
+      assert(isEnd(to(r, fin, 'Sim')) && !failEnd(to(r, fin, 'Sim')), 'concluída → Fim ("o jogo aparece" é resultado, não atividade)');
+      assert(/^Verificar erro/.test(to(r, fin, 'Não')?.label), 'não concluída → verificar erro');
+      assert(r.has(r.byLabel(/^Verificar erro/), r.byLabel(/Não há espaço suficiente\?/)), '"siga o procedimento de solução de problemas" leva à seção de solução de problemas');
+      assert(!r.has(to(r, fin, 'Sim'), r.byLabel(/Não há espaço/)), 'solução de problemas NÃO roda depois do sucesso');
+      const note = [...r.m.nodes.values()].find((n) => n.type === 'note' && /^Dicas:/.test(n.label));
+      assert(note && /Recomendado: manter console atualizado/.test(note.label) && /Opcional: mover jogos/.test(note.label), 'dicas = nota (recomendado/opcional), não etapas');
+      assert(!r.byLabel(/^Concluir instalação$/), 'título "4. Concluir a instalação" não vira atividade');
+      assert(/Requisito: o console precisa estar/.test(r.byLabel(/^Tocar em Baixar/).label), 'pré-requisito de estado vira observação');
+      for (const id of [1, 2, 3, 5, 6, 13]) assert(chk(r, id).ok, `verificação ${id}: ${chk(r, id).detail}`);
+    });
+
+    await scenario('sem_pagamento_formas', 'formas anunciadas sem título comum (inclui "Pix"); observações e problemas como notas', () => {
+      const r = F('sem_pagamento_formas');
+      const d = r.byLabel(/^Qual forma de pagamento\?$/);
+      assert(d && out(r, d).length === 3, '3 formas: ' + out(r, d).map((e) => e.label));
+      assert(r.has(d, r.byLabel(/^Copiar código Pix/), 'Pix'), 'opção curta "Pix" reconhecida');
+      assert(!r.has(r.byLabel(/^Confirmar pagamento/), r.byLabel(/^Copiar código Pix/)), 'cartão não segue para o Pix');
+      const env = r.byLabel(/^Enviar comprovante/);
+      assert([/^Confirmar pagamento/, /^Aguardar até três dias/, /^Fazer pagamento no aplicativo/].every((re) => r.has(r.byLabel(re), env)), 'convergência nas atividades comuns');
+      const notes = [...r.m.nodes.values()].filter((n) => n.type === 'note').map((n) => n.label);
+      assert.strictEqual(notes.length, 1, 'uma nota só (sem notas sobrepostas)');
+      assert(/(^|<br\/>)Problemas comuns: Se o boleto vencer, gere um novo boleto/.test(notes[0]), 'problema não citado = nota com o texto do documento');
+      assert(/(^|<br\/>)Observações:.*Opcional: cadastrar débito/.test(notes[0]), 'procedimento complementar opcional = nota');
+    });
+
+    await scenario('sem_metodos_titulos', '"Método 1/2/3" sem anúncio: rótulos e etapa sem números', () => {
+      const r = F('sem_metodos_titulos');
+      const d = r.byLabel(/^Qual método usar\?$/);
+      assert.deepStrictEqual(out(r, d).map((e) => e.label), ['Site', 'Aplicativo', 'Central de atendimento']);
+      assert(!/\d:/.test(r.code.split('\n').find((l) => /^%% etapa: Método/.test(l)) || ''), 'faixa de etapa sem "1:", "2:"');
+      assert([/^Informar e-mail/, /^Informar número de celular/, /^Confirmar seus dados/].every((re) => r.has(r.byLabel(re), r.byLabel(/^Criar nova senha/))), 'convergência na conclusão');
+    });
+
+    await scenario('sem_multi_alcada', 'decisão com 3 alternativas (faixas de valor) e transferência entre responsáveis', () => {
+      const r = F('sem_multi_alcada');
+      const ds = [...r.m.nodes.values()].filter((n) => n.type === 'decision');
+      assert.strictEqual(ds.length, 1, 'uma decisão, não três encadeadas');
+      assert.strictEqual(ds[0].label, 'Qual o valor da despesa?');
+      assert.deepStrictEqual(out(r, ds[0]).map((e) => e.label), ['até R$ 500', 'entre R$ 500 e R$ 5.000', 'acima de R$ 5.000']);
+      const lanes = out(r, ds[0]).map((e) => r.m.nodes.get(e.to).group).map((g) => r.m.groups.find((x) => x.id === g)?.title);
+      assert.deepStrictEqual(lanes, ['Coordenador', 'Gerente', 'Diretor'], 'cada aprovação na raia de quem aprova');
+      assert(out(r, ds[0]).every((e) => r.has(r.m.nodes.get(e.to), r.byLabel(/^Realizar reembolso/))), 'as alçadas convergem no reembolso');
+    });
+
+    await scenario('sem_estrutura_desenho', 'o desenho preserva a estrutura intermediária (nós, ligações, respostas e raias)', () => {
+      for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.replace('.txt', ''))) {
+        const r = F(f);
+        const lay = laneLayout(r);
+        const boxes = new Map(lay.nodes.filter((n) => n.shape !== 'container').map((n) => [n.id, n]));
+        const lanesG = new Map(lay.nodes.filter((n) => /^RAIA_/.test(n.id)).map((n) => [n.id.replace(/^RAIA_/, ''), n]));
+        for (const a of r.functional.activities) {
+          const b = boxes.get(a.id);
+          assert(b, `${f}: "${a.label}" não foi desenhado`);
+          const lane = lanesG.get(a.lane_id);
+          if (lane && lanesG.size > 1) assert(b.x >= lane.x - 1 && b.x + b.w <= lane.x + lane.w + 1, `${f}: "${a.label}" fora da raia ${a.lane}`);
+          for (const o of a.out) {
+            const drawn = lay.edges.filter((e) => e.from === a.id && e.to === o.to && e.kind !== 'straight');
+            assert(drawn.length, `${f}: ligação ${a.id} → ${o.to} não desenhada`);
+            assert(drawn.some((e) => String(e.label || '') === String(o.label || '').replace(/&quot;/g, '"')), `${f}: resposta "${o.label}" de ${a.id} → ${o.to} perdida no desenho`);
+          }
+        }
+        const modelEdges = r.functional.activities.reduce((n, a) => n + a.out.length, 0);
+        assert.strictEqual(lay.edges.filter((e) => e.kind !== 'straight').length, modelEdges, `${f}: o desenho não tem ligações a mais nem a menos`);
+      }
     });
 
     await scenario('func_recomendacoes_opcionais', 'opcionais continuam escolhas e recomendações continuam notas (14 verificações)', () => {
       const r = F('func_recomendacoes_opcionais');
       assert(r.functional.activities.some((a) => a.type === 'decision' && /^(Deseja|Precisa)\b/.test(a.label)), 'opcional = escolha');
-      assert(chk(r, 11).ok && chk(r, 14).ok, 'recomendação não vira etapa; fidelidade');
+      assert(chk(r, 7).ok && chk(r, 10).ok, 'recomendação não vira etapa; fidelidade');
     });
 
     await scenario('sem_todos', 'as 14 verificações rodam em todos os documentos do Funcional', () => {
       for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.replace('.txt', ''))) {
         const r = F(f);
         assert.strictEqual(r.functional.checks.length, 14, f + ': 14 verificações');
-        const bad = r.functional.checks.filter((c) => !c.ok && ![6, 12].includes(c.id));
+        const bad = r.functional.checks.filter((c) => !c.ok && c.id !== 10);
         assert(!bad.length, f + ': ' + bad.map((c) => `${c.id} ${c.label}: ${c.detail}`).join(' | '));
         for (const d of r.functional.activities.filter((a) => a.type === 'decision')) assert(d.condition && d.outcomes.length >= 2, f + ': decisão sem expressão/saídas: ' + d.label);
         // desenho: losango de Sim/Não com uma ponta para cada resposta
@@ -393,7 +483,8 @@ async function scenario(name, label, fn) {
 
   await scenario('func_layout', 'Funcional: sem cruzamentos de setas, Fim por raia e ramo negativo que encerra', () => {
     for (const f of ['atendimento', 'func_recomendacoes_opcionais', 'func_secoes_responsaveis', 'func_um_responsavel', 'instalar_ps5',
-      'sem_metodos', 'sem_metodos2', 'sem_humano_auto', 'sem_neg_conexao', 'sem_neg_equipamento', 'sem_sucesso_falha', 'sem_recuperacao']) {
+      'sem_metodos', 'sem_metodos2', 'sem_humano_auto', 'sem_neg_conexao', 'sem_neg_equipamento', 'sem_sucesso_falha', 'sem_recuperacao',
+      'sem_instalacao_metodos', 'sem_pagamento_formas', 'sem_metodos_titulos', 'sem_multi_alcada', 'sem_linear']) {
       const v = visual(generate(f, 'raias'));
       assert.strictEqual(v.crossings, 0, f + ': setas que se cruzam');
       assert.strictEqual(v.through, 0, f + ': setas sobre blocos');

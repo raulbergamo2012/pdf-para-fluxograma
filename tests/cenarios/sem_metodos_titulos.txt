@@ -1,0 +1,19 @@
+Redefinição de senha
+
+Método 1: pelo site
+1. Acesse a página de login.
+2. Clique em Esqueci minha senha.
+3. Informe o e-mail cadastrado.
+
+Método 2: pelo aplicativo
+1. Abra o aplicativo.
+2. Toque em Recuperar acesso.
+3. Informe o número de celular.
+
+Método 3: pela central de atendimento
+1. Ligue para a central.
+2. Confirme seus dados pessoais.
+
+Conclusão
+1. Crie uma nova senha.
+2. Faça login com a nova senha.

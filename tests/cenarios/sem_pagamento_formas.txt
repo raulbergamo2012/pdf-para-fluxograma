@@ -1,0 +1,28 @@
+Pagamento de mensalidade
+
+O aluno pode pagar a mensalidade de três formas: cartão de crédito, boleto ou Pix.
+
+Cartão de crédito
+1. Acesse o portal do aluno.
+2. Informe os dados do cartão.
+3. Confirme o pagamento.
+
+Boleto bancário
+1. Gere o boleto no portal do aluno.
+2. Pague o boleto no banco ou no aplicativo do banco.
+3. Aguarde até três dias úteis para a compensação.
+
+Pix
+1. Copie o código Pix exibido no portal.
+2. Faça o pagamento no aplicativo do banco.
+
+Após o pagamento
+1. O sistema envia o comprovante por e-mail.
+2. A secretaria atualiza a situação do aluno.
+
+Observações
+- É recomendado guardar o comprovante.
+- Você pode cadastrar o débito automático para os próximos meses.
+
+Problemas comuns
+- Se o boleto vencer, gere um novo boleto.
