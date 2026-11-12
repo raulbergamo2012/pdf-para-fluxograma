@@ -1,0 +1,11 @@
+Entrega de pedidos
+Responsabilidades do cliente
+1. Fazer o pedido no site.
+2. Confirmar o endereço de entrega.
+Responsabilidades da transportadora
+1. Retirar a mercadoria no depósito.
+2. Entregar a mercadoria no endereço.
+3. Se o cliente não estiver em casa, agendar nova entrega.
+Responsabilidades do cliente
+1. Conferir a mercadoria recebida.
+2. Avaliar a entrega no site.

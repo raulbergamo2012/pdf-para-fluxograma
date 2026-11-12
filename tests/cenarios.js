@@ -50,7 +50,17 @@ async function scenario(name, label, fn) {
         return x2 > n.x + 3 && x1 < n.x + n.w - 3 && y2 > n.y + 3 && y1 < n.y + n.h - 3;
       })()))) through++;
     }
-    return { overlap, through, nodes: boxes.length };
+    // cruzamentos: um trecho horizontal de uma seta cortando um trecho vertical de OUTRA (encontros em "T" de setas
+    // que convergem não contam)
+    const segs = model.edges.filter((e) => e.kind !== 'straight').map((e) => { const pts = routeEdge(model, e); return pts.slice(1).map((p, k) => [pts[k], p]); });
+    let crossings = 0;
+    for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) for (const [a1, a2] of segs[i]) for (const [b1, b2] of segs[j]) {
+      const h = a1[1] === a2[1] ? [a1, a2] : b1[1] === b2[1] ? [b1, b2] : null, v = h && (h[0] === a1 ? [b1, b2] : [a1, a2]);
+      if (!h || v[0][0] !== v[1][0] || h === v) continue;
+      const x = v[0][0], y = h[0][1];
+      if (x > Math.min(h[0][0], h[1][0]) + 2 && x < Math.max(h[0][0], h[1][0]) - 2 && y > Math.min(v[0][1], v[1][1]) + 2 && y < Math.max(v[0][1], v[1][1]) - 2) crossings++;
+    }
+    return { overlap, through, nodes: boxes.length, crossings };
   };
   const common = (r) => {
     assert(!r.issues.some((i) => i.level === 'erro'), 'validação com erro: ' + JSON.stringify(r.issues.filter((i) => i.level === 'erro')));
@@ -164,7 +174,7 @@ async function scenario(name, label, fn) {
     const rows = m.nodes.filter((n) => /^ETAPA_\d/.test(n.id));
     assert(rows.length === 2 && rows.some((b) => /disco · digital/.test(b.text)), 'etapas como faixas (métodos alternativos na mesma faixa): ' + rows.map((b) => b.text));
     const fim = m.nodes.find((n) => n.id === 'FIM');
-    assert(m.nodes.filter((n) => n.shape !== 'container').every((n) => n === fim || n.y < fim.y), 'Fim na última linha');
+    assert(m.nodes.filter((n) => n.shape !== 'container').every((n) => n === fim || /^FIM\d/.test(n.id) || n.y < fim.y), 'Fim na última linha');
     const grp = (id) => m.edges.filter((e) => e.from === id && e.label);
     for (const dd of m.nodes.filter((n) => n.shape === 'diamond')) {
       const ports = grp(dd.id).map((e) => e.fromPort);
@@ -229,6 +239,23 @@ async function scenario(name, label, fn) {
     assert.strictEqual(laneOf(/dentro do prazo\?/), 'Atendente', 'decisão na raia de quem decide');
     assert(fm.handoffs.length >= 3, 'transferências registradas: ' + fm.handoffs.length);
   });
+  await scenario('func_layout', 'Funcional: sem cruzamentos de setas, Fim por raia e ramo negativo que encerra', () => {
+    for (const f of ['atendimento', 'func_recomendacoes_opcionais', 'func_secoes_responsaveis', 'func_um_responsavel', 'instalar_ps5']) {
+      const v = visual(generate(f, 'raias'));
+      assert.strictEqual(v.crossings, 0, f + ': setas que se cruzam');
+      assert.strictEqual(v.through, 0, f + ': setas sobre blocos');
+    }
+    // atendimento: 3 raias terminam o fluxo → 3 símbolos de Fim, cada um na sua raia (nenhuma seta longa até o Cliente)
+    const at = generate('atendimento', 'raias');
+    const fins = [...at.m.nodes.values()].filter((n) => n.type === 'end');
+    assert.strictEqual(new Set(fins.map((n) => n.group)).size, fins.length, 'um Fim por raia');
+    assert(at.m.edges.filter((e) => fins.some((f) => f.id === e.to)).every((e) => at.m.nodes.get(e.from).group === at.m.nodes.get(e.to).group), 'cada caminho termina no Fim da própria raia');
+    // "Caso contrário, o atendente informa que a troca não é possível": o ramo Não encerra, não segue para "Escolher novo produto"
+    const tr = generate('func_dois_responsaveis', 'raias');
+    const inf = tr.byLabel(/^Informar ao cliente/);
+    assert(inf && tr.m.edges.some((e) => e.from === inf.id && tr.m.nodes.get(e.to).type === 'end'), 'ramo negativo termina em Fim sem conclusão');
+    assert(!tr.has(inf, tr.byLabel(/^Escolher novo produto/)), 'ramo negativo não segue para a troca');
+  });
   await scenario('atendimento', 'F3 vários departamentos', () => {
     const { lanes } = F('atendimento');
     assert(lanes.length >= 4 && ['Cliente', 'Equipe de vendas', 'Suporte técnico', 'Desenvolvimento'].every((x) => lanes.includes(x)), lanes.join(', '));
@@ -237,7 +264,7 @@ async function scenario(name, label, fn) {
     const { fm, laneOf } = F('empresa_reembolso');
     assert.strictEqual(laneOf(/^Gestor aprova\?/), 'Gestor');
     const corr = fm.activities.find((a) => /^Corrigir/.test(a.label)), anal = fm.activities.find((a) => /^Analisar/.test(a.label));
-    assert(corr.lane === 'Colaborador' && corr.out.includes(anal.id), 'rejeição volta ao colaborador, que corrige e reenvia ao gestor');
+    assert(corr.lane === 'Colaborador' && corr.out.some((o) => o.to === anal.id), 'rejeição volta ao colaborador, que corrige e reenvia ao gestor');
     assert(fm.handoffs.some((h) => h.fromLane === 'Colaborador' && h.toLane === 'Gestor' && h.from === corr.id), 'retorno registrado como transferência');
     const pay = fm.activities.find((a) => /^Realizar pagamento/.test(a.label));
     assert(pay.conditions.some((c) => /corretos\?/.test(c.question) && c.answer === 'Sim'), 'condição de execução registrada');
@@ -270,6 +297,49 @@ async function scenario(name, label, fn) {
     assert.strictEqual(fm.stages.length, 3);
   });
 
+  await scenario('func_recomendacoes_opcionais', 'F11 recomendações, opcionais, explicações e responsáveis fora da lista', () => {
+    const text = fs.readFileSync(path.join(dir, 'func_recomendacoes_opcionais.txt'), 'utf8');
+    const rep = {};
+    const fin = finalize(heuristicMermaid(text, 'x', 'TD', 'raias', { report: rep }), { text, type: 'raias', sources: rep.sources, content: rep.content });
+    const fm = fin.functional, A = fm.activities, act = (re) => A.find((a) => re.test(a.label));
+    assert.deepStrictEqual(fm.lanes.map((l) => l.title), ['Síndico', 'Administradora', 'Moradores', 'Conselho fiscal'], 'responsáveis fora da lista fixa (síndico, administradora) e "cabe ao conselho fiscal"');
+    assert(!A.some((a) => /recomendado|cópia digital|costuma|cerca de uma hora|pronto/i.test(a.label)), 'recomendação/observação/explicação não viram caixa');
+    assert(act(/^Enviar edital/).notes.some((n) => /recomendado/i.test(n)), 'recomendação vira nota da atividade relacionada');
+    assert(act(/^Arquivar ata/).notes.some((n) => /cópia digital/i.test(n)), '"Importante:" vira nota');
+    const optD = act(/^Deseja enviar sugestões/), opt = act(/^Enviar sugestões/);
+    assert(optD && optD.type === 'decision' && optD.lane === 'Moradores' && opt.category === 'opcional', '"podem enviar" vira escolha opcional na raia dos moradores');
+    assert(optD.out.some((o) => o.label === 'Não' && o.to !== opt.id), 'o "Não" da opcional segue em frente');
+    assert(act(/^Precisa contratar auditoria/)?.lane === 'Síndico', '"Se necessário" vira "Precisa…?" na raia de quem faz');
+    assert.strictEqual(act(/aprovam contas\?/).lane, 'Moradores', 'decisão de quem decide');
+    assert.strictEqual(act(/^Refazer parecer/).lane, 'Conselho fiscal', 'alternativa "Não" com o responsável dela');
+    assert(act(/^Apresentar parecer/).stage_id === 'E2' && act(/^Apresentar parecer/).lane_id, 'stage_id e lane_id independentes');
+    const st2 = new Set(A.filter((a) => a.stage_id === 'E2').map((a) => a.lane)), sind = new Set(A.filter((a) => a.lane === 'Síndico' && a.stage_id).map((a) => a.stage_id));
+    assert(st2.size >= 3 && sind.size >= 3, 'uma etapa com vários responsáveis e um responsável em várias etapas');
+    assert(rep.content.some((c) => c.category === 'recomendação') && rep.content.some((c) => c.category === 'explicativa') && rep.content.some((c) => c.category === 'opcional'), 'conteúdo classificado');
+    const bad = fm.checks.filter((c) => !c.ok);
+    assert.strictEqual(fm.checks.length, 14); assert(!bad.length, 'validação do Funcional sem pendências: ' + bad.map((c) => c.label + ' — ' + c.detail).join('; '));
+  });
+  await scenario('func_secoes_responsaveis', 'F12 seções com o nome do responsável (não viram etapas)', () => {
+    const { lanes, laneOf, fm } = F('func_secoes_responsaveis');
+    assert.deepStrictEqual(lanes, ['Cliente', 'Transportadora']);
+    assert.strictEqual(laneOf(/^Retirar mercadoria/), 'Transportadora'); assert.strictEqual(laneOf(/^Conferir mercadoria/), 'Cliente');
+    assert.strictEqual(laneOf(/não está em casa\?/), 'Transportadora', '"se o cliente não estiver em casa": decide quem está entregando');
+    assert(!fm.stages.length, 'título de responsável não vira faixa de etapa');
+  });
+  await scenario('func_validacao', 'validação do Funcional aponta atividade na raia errada e recomendação como tarefa', () => {
+    const { functionalModel, functionalChecks } = require('../lib/pipeline');
+    const { fromMermaid } = require('../lib/model');
+    const { functionalContext, actorOf } = require('../lib/functional');
+    const code = '%% tipo: raias\nflowchart TD\n  subgraph R1["Cliente"]\n    INICIO(["Início"])\n    P1["Abrir chamado"]\n    P2["Resolver problema"]\n    P3["Evitar senhas fracas"]\n    FIM(["Fim"])\n  end\n  subgraph R2["Suporte"]\n    P4["Registrar"]\n  end\n  INICIO --> P1\n  P1 --> P2\n  P2 --> P3\n  P3 --> FIM';
+    const text = 'O cliente abre o chamado. O suporte resolve o problema. Evite senhas fracas.';
+    const fctx = functionalContext(text.split(/(?<=\.)\s+/));
+    const fm = functionalModel(fromMermaid(code), code, { P1: 'O cliente abre o chamado.', P2: 'O suporte resolve o problema.', P3: 'Evite senhas fracas.' }, { fctx });
+    const checks = functionalChecks(fm, [], text, fctx), c = (id) => checks.find((x) => x.id === id);
+    assert(!c(3).ok && /Resolver problema/.test(c(3).detail), 'raia errada detectada: ' + JSON.stringify(c(3)));
+    assert(!c(8).ok && /Evitar senhas/.test(c(8).detail), 'recomendação como tarefa detectada');
+    assert(!c(4).ok && /Registrar/.test(c(4).detail), 'atividade desconectada detectada');
+  });
+
   // regra geral do Funcional, em TODOS os documentos de teste: raias = responsáveis (nunca títulos de etapa),
   // etapas = faixas horizontais, cada atividade dentro da sua raia e da sua faixa, setas descendo
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.slice(0, -4))) {
@@ -281,7 +351,8 @@ async function scenario(name, label, fn) {
       for (const g of r.m.groups) {
         assert(!heads.includes(g.title.toLowerCase()) || ROLE.test(g.title.split(/\s+/)[0]), 'raia não pode ser título do documento: ' + g.title);
         assert(g.title === 'Responsável não especificado' || /^(Sistema|Aplicativo|Console|Computador|Site|Impressora|Servidor|Plataforma|Loja|Jogo|Navegador|Roteador|Programa)$/.test(g.title)
-          || g.title.split(/\s+/).some((w) => ROLE.test(w.replace(/[^\wÀ-ú-]/g, ''))), 'raia deve ser um responsável: ' + g.title);
+          || g.title.split(/\s+/).some((w) => { const x = w.replace(/[^\wÀ-ú-]/g, ''); return [x, x.replace(/e?s$/i, '')].some((f) => ROLE.test(f) || ROLE.test(f.replace(/a$/i, 'o')) || ROLE.test(f.replace(/a$/i, ''))); })
+          || (text.match(new RegExp('\\b(?:o|a|os|as)\\s+' + g.title.split(/\s+/)[0], 'gi')) || []).length >= 2, 'raia deve ser um responsável: ' + g.title);
       }
       const m = laneLayout(r);
       const N = (id) => m.nodes.find((n) => n.id === id);

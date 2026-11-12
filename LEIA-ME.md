@@ -16,6 +16,38 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.5: responsáveis, classificação do conteúdo e lógica do Funcional
+
+**Quem faz cada atividade** (`lib/functional.js`, sem depender da IA)
+- Responsáveis reconhecidos pelo sujeito da frase ("o síndico convoca…"), por frases de dever ("cabe ao conselho…",
+  "é responsabilidade do RH…"), pela voz passiva ("é aprovado pelo gestor"), por seções ("Responsabilidades do
+  cliente") e por plurais/femininos ("moradores", "administradora"). Agentes só viram raia quando aparecem em 2+ frases.
+- Títulos e etapas nunca viram responsáveis. Sem responsável no texto → raia "Responsável não especificado" (nada é
+  inventado); dá para renomear/mover atividades na aba Análise.
+
+**Classificação do conteúdo** — cada trecho é classificado como obrigatória, opcional, condicional, decisão,
+entrada/saída, recomendação, observação, pré-requisito, resultado ou explicativa.
+- Recomendações, observações e proibições ("É recomendado…", "Importante:", "Não use…") viram **nota** do bloco, não etapa.
+- Explicações ("A assembleia é uma reunião…", "costuma durar cerca de uma hora") não viram blocos.
+- Atividades opcionais ("os moradores podem enviar sugestões", "se necessário, contrata auditoria") viram uma escolha
+  `Deseja…?` / `Precisa…?` na raia de quem faz, com o "Não" seguindo o fluxo — nunca uma etapa obrigatória.
+- Ramo com resultado negativo ("informa que a troca não é possível", "o pedido é recusado") termina em
+  "Fim sem conclusão", em vez de seguir como se tivesse dado certo.
+
+**Modelo intermediário validado antes de desenhar** (`lib/pipeline.js`): raias (entidades próprias), etapas
+(`stage_id`) e atividades (`lane_id`, responsável, categoria, condições, dependências, conexões, origem no PDF).
+14 verificações automáticas aparecem na aba Análise ("Validação do Funcional x/14"); as que falham viram avisos.
+
+**Layout** (`public/swimlane.mjs`)
+- Cores por raia (como na imagem de referência); losango que recebe atividade de outra raia é alcançado por cima.
+- Saída lateral do losango para outra raia segue reta até a coluna do destino e desce (sem cruzar outras setas).
+- Retorno dentro da raia sobe pelo lado livre quando o outro lado já recebe uma seta.
+- Atividade que está "atrás" do outro ramo do losango desce uma linha: a seta passa por baixo, sem cruzar.
+- Caminhos de raias diferentes terminam no **Fim da própria raia** (sem setas longas atravessando o diagrama).
+
+**Testes**: `npm test` — 47 cenários, incluindo condomínio com recomendações/opcionais, seções de responsáveis,
+validação das 14 regras e um teste de layout que exige zero cruzamentos e zero setas sobre blocos.
+
 ## Novidades da versão 4.0.4: Fluxograma Funcional de verdade (raias = responsáveis, etapas = faixas)
 
 A 4.0.3 transformava o Funcional sem responsáveis numa coluna única com títulos de etapa: era um fluxograma vertical

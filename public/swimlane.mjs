@@ -116,7 +116,18 @@ export function autoLayout(code, opts = {}) {
       // aí o ramo começa NA ALTURA do losango, e a seta segue reta para o lado, sem subir
       // Funcional (raias de responsáveis): passar para a raia VIZINHA pode ser na mesma linha (seta reta para o lado);
       // para uma raia mais distante, a atividade desce uma linha — a seta não precisa passar por trás das outras raias
-      const farLane = (p) => useLanes && !LR && type === 'raias' && !phases && Math.abs(laneOf.get(p) - lane) > 1 ? 1 : 0;
+      // …e um LOSANGO que recebe a atividade de outra raia fica uma linha abaixo: a seta entra por cima e as duas
+      // pontas laterais ficam livres para as saídas Sim/Não
+      // …e quando a origem é o ramo de um losango que fica do lado OPOSTO ao da raia de destino ("Sim" à direita
+      // passando para a raia da esquerda), com o outro ramo na mesma raia: o outro ramo está no meio do caminho,
+      // então a atividade desce uma linha e a seta passa por baixo dele, sem cruzar linhas
+      const branchAway = (p) => {
+        const de = fwd.find((e) => e.to === p && g.nodes.get(e.from)?.kind === 'decision' && laneOf.get(e.from) === laneOf.get(p));
+        if (!de || !fwd.some((e) => e.from === de.from && e.to !== p && laneOf.get(e.to) === laneOf.get(p))) return false;
+        const side = /^n[aã]o\b/i.test(de.label || '') ? -1 : /^sim\b/i.test(de.label || '') ? 1 : 0;
+        return side !== 0 && side === -Math.sign(lane - laneOf.get(p));
+      };
+      const farLane = (p) => (useLanes && !LR && type === 'raias' && !phases && (Math.abs(laneOf.get(p) - lane) > 1 || g.nodes.get(id)?.kind === 'decision' || branchAway(p)) ? 1 : 0);
       preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || (phases && g.nodes.get(p)?.kind !== 'decision') ? 0 : rank.get(p) + farLane(p)); });
       if (type === 'processo' && !columns) r = Math.max(r, ...[...rank.values()].map((x) => x + 1), 0);   // coluna única e reta
       if (columns) r = Math.max(r, ...steps.filter((o) => rank.has(o) && laneOf.get(o) === lane).map((o) => rank.get(o) + 1), 0);
@@ -329,13 +340,20 @@ export function autoLayout(code, opts = {}) {
         text: stageDefs[k].title, fill: 'none', headFill: k % 2 ? '#e9edf1' : '#f1f4f7', stroke: P.laneStroke, color: '#1d2b36', fontSize: 13, bold: true, locked: true });
     });
   }
+  // Funcional com 2+ responsáveis: cada raia tem uma cor suave nas suas atividades (como no modelo de referência) —
+  // dá para ver de longe de quem é cada caixa; decisões, início/fim, dúvidas e erros mantêm as cores próprias
+  const TINTS = [['#E6F6EE', '#2E9E6B', '#14532D'], ['#E8F0FC', '#3B6FC4', '#1E3A8A'], ['#FFF4DC', '#D4932A', '#7C4A03'], ['#F2EAFB', '#8A5CC2', '#4C1D95'],
+    ['#FDEBEC', '#C9544D', '#7F1D1D'], ['#E6F4F7', '#2F8FA6', '#164E63'], ['#F0F5E4', '#6E9A2E', '#3F6212'], ['#FBEEE4', '#C27A3A', '#7C2D12']];
+  const laneTint = useLanes && type === 'raias' && !phases && nLanes >= 2 && P.laneColors !== false
+    ? (id) => { const t = TINTS[laneOf.get(id) % TINTS.length]; return { fill: t[0], stroke: t[1], color: t[2] }; } : null;
   const style = (id) => {
     const k = kindOf(id), c = g.classes.get(id) || new Set();
     if (k === 'note') return { shape: 'rounded', fill: P.noteFill, stroke: P.noteStroke, dashed: true, color: '#555555' };
     if (k === 'diamond') return { shape: 'diamond', fill: P.decisionFill, stroke: P.decisionStroke };
-    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: P.fill, stroke: P.stroke };   // entrada/saída de dados
+    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: P.fill, stroke: P.stroke, ...(laneTint ? laneTint(id) : {}) };   // entrada/saída de dados
     if (k === 'terminator') return { shape: 'terminator', fill: P.terminalFill, stroke: P.terminalStroke };
     if (c.has('duvida')) return { shape: 'rect', fill: '#FFF8E6', stroke: '#C98A00', dashed: true, color: '#6B4E00' };   // ponto com dúvida no documento
+    if (laneTint) return { shape: 'rect', ...laneTint(id) };   // Funcional: a cor é a do responsável (também nos desvios)
     if (c.has('erro')) return { shape: 'rect', fill: P.errorFill, stroke: P.errorStroke };
     return { shape: 'rect', fill: P.fill, stroke: P.stroke };
   };
@@ -441,6 +459,17 @@ export function autoLayout(code, opts = {}) {
       // sobe pela esquerda da raia: sai pela esquerda do bloco de origem e entra pela esquerda do destino
       const minX = Math.min(...inLane.map((n) => n.x));
       const x = Math.round(Math.max(lx1 + 4, minX - 12));   // mais perto dos blocos que o corredor das passagens entre raias
+      // a lateral esquerda da origem (ou do destino) já recebe uma seta vinda da esquerda? então o retorno sobe
+      // pela DIREITA da raia — não sai do mesmo ponto em que outra seta chega
+      const bId = idOfBox(B);
+      const arrivesLeft = (id, N) => flowEdges.some((x) => x.to === id && x.from !== sourceId && x.from !== bId && pos.get(x.from)
+        && pos.get(x.from).x + pos.get(x.from).w <= N.x + 1 && Math.abs(pos.get(x.from).y + pos.get(x.from).h / 2 - (N.y + N.h / 2)) < 6);
+      if (arrivesLeft(sourceId, A) || arrivesLeft(bId, B)) {
+        const maxX = Math.max(...inLane.map((n) => n.x + n.w));
+        const xr = Math.round(Math.min(lx2 - 4, maxX + 12));
+        const segsR = [[A.x + A.w, ay, xr, ay], [xr, ay, xr, by], [xr, by, B.x + B.w, by]];
+        if (xr > maxX + 6 && !hitsAny(segsR, A, B)) return { fromPort: sides.b, toPort: sides.b, points: [[xr, ay], [xr, by]] };
+      }
       if (x >= minX - 6) return null;
       const segs = [[A.x, ay, x, ay], [x, ay, x, by], [x, by, B.x, by]];
       if (hitsAny(segs, A, B)) return null;
@@ -576,12 +605,31 @@ export function autoLayout(code, opts = {}) {
     const handDown = laneCols && laneOf.get(e.from) !== laneOf.get(e.to) && !back.has(e) && dMain > 4
       && (kindOf(e.from) !== 'diamond' || (!bottomExit.has(e.from) && !flowEdges.some((x) => x !== e && x.from === e.from && !back.has(x) && pos.get(x.to) && Math.abs(pos.get(x.to).y + pos.get(x.to).h / 2 - (A.y + A.h / 2)) > 4 && pos.get(x.to).y < B.y)))
       && (() => {
-        const ax = Math.round(A.x + A.w / 2), bx = Math.round(B.x + B.w / 2), gy = Math.round(B.y - Math.min(18, GAP_MAIN / 2));
-        if (gy <= A.y + A.h + 6) return null;
-        const segs = [[ax, A.y + A.h, ax, gy], [Math.min(ax, bx), gy, Math.max(ax, bx), gy], [bx, gy, bx, B.y]];
-        return hitsAny(segs, A, B) ? null : [[ax, gy], [bx, gy]];
+        const ax = Math.round(A.x + A.w / 2), bx = Math.round(B.x + B.w / 2);
+        // atravessa logo acima do destino; se houver bloco no caminho, atravessa logo abaixo da origem
+        for (const gy of [Math.round(B.y - Math.min(18, GAP_MAIN / 2)), Math.round(A.y + A.h + Math.min(18, GAP_MAIN / 2))]) {
+          if (gy <= A.y + A.h + 6 || gy >= B.y - 6) continue;
+          const segs = [[ax, A.y + A.h, ax, gy], [Math.min(ax, bx), gy, Math.max(ax, bx), gy], [bx, gy, bx, B.y]];
+          if (!hitsAny(segs, A, B)) return [[ax, gy], [bx, gy]];
+        }
+        return null;
       })();
-    if (handDown) {
+    // saída lateral de um LOSANGO para outra raia, mais abaixo: sai pela ponta virada para o destino, segue reto até
+    // a coluna do destino e desce entrando por cima (junta-se às outras setas que chegam ali — sem cruzá-las)
+    const diamondL = !handDown && laneCols && kindOf(e.from) === 'diamond' && laneOf.get(e.from) !== laneOf.get(e.to) && !back.has(e)
+      && dMain > 4 && bottomExit.get(e.from) !== e && B.shape !== 'diamond' && (() => {
+        const side = dCross > 0 ? sides.b : sides.a;
+        if ((usedSide.get(e.from) || new Set()).has(side)) return null;
+        const pref = /^n[aã]o\b/i.test(e.label || '') ? sides.a : /^sim\b/i.test(e.label || '') ? sides.b : side;
+        if (pref !== side && flowEdges.some((x) => x !== e && x.from === e.from && (/^n[aã]o\b/i.test(x.label || '') ? sides.a : sides.b) === side)) return null;
+        const ay = Math.round(A.y + A.h / 2), tx = Math.round(dCross > 0 ? A.x + A.w : A.x), bx = Math.round(B.x + B.w / 2);
+        if (dCross > 0 ? bx < tx + 24 : bx > tx - 24) return null;
+        const segs = [[tx, ay, bx, ay], [bx, ay, bx, B.y]];
+        return hitsAny(segs, A, B) ? null : { side, points: [[bx, ay]] };
+      })();
+    if (diamondL) {
+      fromPort = diamondL.side; toPort = sides.bwd; points = diamondL.points;
+    } else if (handDown) {
       // passagem de responsabilidade para uma linha mais abaixo: desce, atravessa as raias logo acima do destino e
       // entra por cima — não volta pela mesma linha da seta que chegou (sem trechos sobrepostos)
       fromPort = sides.fwd; toPort = sides.bwd; points = handDown;

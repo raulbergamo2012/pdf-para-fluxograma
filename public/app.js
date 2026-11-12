@@ -412,6 +412,7 @@ async function generateAndValidate(src, mermaidReady, forceProvider, type = pref
   return {
     id: uid(), title: src.title, code, warning, provider, model, type: res.type || type,
     auto: !!res.auto, autoReason: res.autoReason || '', issues: res.issues || [], structure: res.structure || null, goal: res.goal || '',
+    functional: res.functional ? { checks: res.functional.checks || [], content: (res.functional.content || []).map((c) => c.category) } : null,
     sourceType: src.sourceType, sourceName: src.sourceName, pages: src.pages, words: src.words,
     durationMs: res.durationMs, createdAt: Date.now(), pinned: false,
   };
@@ -903,7 +904,28 @@ function lanesCard(item) {
           <input class="new-lane" data-new="${esc(a.id)}" placeholder="Nome da nova raia" hidden maxlength="60"></td></tr>`).join('')}</table>
       </details>
       <div class="a-actions"><button class="btn-outline sm" id="btnLanes">Aplicar responsáveis</button></div>
+      ${functionalChecksHtml(item)}
     </div>`;
+}
+// validação do Funcional (14 verificações feitas no servidor) e como cada informação do documento foi tratada
+function functionalChecksHtml(item) {
+  const f = item.functional;
+  if (!f?.checks?.length) return '';
+  const count = (f.content || []).reduce((m, c) => ((m[c] = (m[c] || 0) + 1), m), {});
+  const asNotes = (count['recomendação'] || 0) + (count['observação'] || 0) + (count['resultado'] || 0);
+  const parts = [
+    count['obrigatória'] ? plural(count['obrigatória'], 'atividade', 'atividades') : '',
+    count['entrada/saída'] ? plural(count['entrada/saída'], 'entrada/saída de informação', 'entradas/saídas de informação') : '',
+    count['opcional'] ? plural(count['opcional'], 'atividade opcional (escolha)', 'atividades opcionais (escolha)') : '',
+    (count['condicional'] || 0) + (count['decisão'] || 0) ? plural((count['condicional'] || 0) + (count['decisão'] || 0), 'condição/decisão', 'condições/decisões') : '',
+    asNotes ? plural(asNotes, 'recomendação/observação virou nota', 'recomendações/observações viraram notas') : '',
+    count['pré-requisito'] ? plural(count['pré-requisito'], 'pré-requisito', 'pré-requisitos') : '',
+    count['explicativa'] ? plural(count['explicativa'], 'frase explicativa fora do fluxo', 'frases explicativas fora do fluxo') : '',
+  ].filter(Boolean);
+  return `<details class="lane-acts f-checks"${f.checks.some((c) => !c.ok) ? ' open' : ''}><summary>Validação do Funcional (${f.checks.filter((c) => c.ok).length}/${f.checks.length})</summary>
+      ${parts.length ? `<p class="muted" style="margin:6px 0 10px;font-size:13px">Documento classificado: ${esc(parts.join(' · '))}.</p>` : ''}
+      <ul class="checks">${f.checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}"><span class="ic">${c.ok ? '✓' : '!'}</span><span>${esc(c.label)}${c.detail ? `<small>${esc(c.detail)}</small>` : ''}</span><span class="pen"></span></li>`).join('')}</ul>
+    </details>`;
 }
 function bindLanesCard(item) {
   const card = $('#lanesCard');
@@ -941,7 +963,7 @@ async function regenerate() {
     const fresh = await generateAndValidate(src, loadMermaid(), undefined, item.auto ? 'auto' : itemType(item));
     delete item.visual;
     Object.assign(item, { visual: null, code: fresh.code, warning: fresh.warning, provider: fresh.provider, model: fresh.model, durationMs: fresh.durationMs,
-      type: fresh.type, auto: fresh.auto, autoReason: fresh.autoReason, issues: fresh.issues, structure: fresh.structure, goal: fresh.goal });
+      type: fresh.type, auto: fresh.auto, autoReason: fresh.autoReason, issues: fresh.issues, structure: fresh.structure, goal: fresh.goal, functional: fresh.functional });
     updateItem(item.id, item);
     await openItem(item);
   } catch (e) {

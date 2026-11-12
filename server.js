@@ -202,14 +202,14 @@ async function apiGenerate(body) {
   const status = body.provider === 'regras' ? { provider: 'regras', model: '' } : await detectStatus(cfg);
   // camadas 3 e 4: todo código (Regras ou IA) passa pelo modelo estruturado e pela validação antes de ir à tela
   const done = (r) => {
-    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length), sources: r.sources });
+    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length), sources: r.sources, content: r.content });
     const issues = [...(r.notes || []).map((m) => ({ level: 'interpretação', message: m })), ...fin.issues];
-    return { ...r, code: fin.code, type, auto, autoReason: pick.reason, issues, structure: summary(fin.model), functional: fin.functional || null, notes: undefined, sources: undefined, durationMs: Date.now() - started };
+    return { ...r, code: fin.code, type, auto, autoReason: pick.reason, issues, structure: summary(fin.model), functional: fin.functional || null, notes: undefined, sources: undefined, content: undefined, durationMs: Date.now() - started };
   };
   const viaRegras = (warning) => {
     const report = {};
     const code = heuristicMermaid(text, title, direction, type, { natural: pick.natural, report });
-    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal, sources: report.sources });
+    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal, sources: report.sources, content: report.content });
   };
 
   if (status.provider === 'regras') {
