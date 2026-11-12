@@ -296,10 +296,39 @@ Finalização
   const fx = fixLanes(ai, c.replace(/^\s*%%.*\n/gm, ''));
   const gf = parseLanes(fx.code);
   const lanesUsed = new Set([...gf.nodes.values()].map((n) => n.sg));
-  assert(fx.fixed && lanesUsed.size >= 3 && gf.nodes.get('INICIO').sg === gf.sgs[0].id, 'IA amontoada é redistribuída, Início na 1ª raia:\n' + fx.code);
+  // receita: ninguém além do leitor executa — a IA criou raia de ETAPA ("Preparo da massa"): vira a raia do responsável
+  assert(fx.fixed && gf.sgs.length === 1 && /não especificado/.test(gf.sgs[0].title) && gf.nodes.get('INICIO').sg === gf.sgs[0].id, 'raia de etapa da IA vira a raia do responsável:\n' + fx.code);
+  assert(/%% etapa: Preparo da massa · da cobertura ::/.test(c) && /%% etapa: Forno ::/.test(c), 'etapas como agrupamento secundário:\n' + c);
 }
 
-// Funcional SEM responsáveis: vertical (de cima para baixo), etapas em faixas horizontais — nenhuma coluna por título
+// Funcional vindo da IA com raias de ETAPA: os blocos vão para as raias dos responsáveis do documento
+{
+  const { fixLanes, parseLanes } = require('../lib/lanes');
+  const doc = require('fs').readFileSync(require('path').join(__dirname, 'cenarios', 'func_etapas_funcoes.txt'), 'utf8');
+  const ref = heuristicMermaid(doc, 'Compra', 'TD', 'raias').replace(/^\s*%%.*\n/gm, '');
+  const ai = `flowchart TD
+    subgraph A["Solicitação"]
+        INICIO(["Início"]) --> P1["Preencher pedido de compra"] --> P2["Anexar orçamento e enviar"]
+    end
+    subgraph B["Análise"]
+        P3["Conferir orçamento"] --> D1{"Há verba disponível?"}
+    end
+    subgraph C["Aprovação"]
+        P4["Avaliar pedido"] --> D2{"Gestor aprova?"} -->|Sim| P5["Emitir ordem de compra"] --> FIM(["Fim"])
+    end
+    P2 --> P3
+    D1 -->|Sim| P4
+    D1 -->|Não| P1
+    D2 -->|Não| FIM`;
+  const fx = fixLanes(ai, ref);
+  const g = parseLanes(fx.code);
+  const lane = (id) => g.sgs.find((x) => x.id === g.nodes.get(id).sg)?.title;
+  assert(fx.fixed && /etapas, não responsáveis/.test(fx.reason), fx.reason);
+  assert(!g.sgs.some((x) => /Solicitação|Análise|Aprovação/.test(x.title)), 'raias de etapa removidas:\n' + fx.code);
+  assert(lane('P1') === 'Solicitante' && lane('P3') === 'Analista' && lane('P4') === 'Gestor' && lane('P5') === 'Comprador', 'cada bloco na raia do responsável:\n' + fx.code);
+}
+
+// Funcional: raias = RESPONSÁVEIS; etapas = faixas horizontais que atravessam as raias (agrupamento secundário)
 (async () => {
   const { autoLayout } = await import('../public/swimlane.mjs');
   const doc = `Como montar um PC
@@ -318,21 +347,19 @@ Etapa 3: Teste
 1. Ligue o computador.
 2. Feche a tampa lateral.`;
   const c = heuristicMermaid(doc, 'PC', 'TD', 'raias');
-  assert(/%% raias: etapas/.test(c), 'marca etapas (não responsáveis):\n' + c);
+  assert(!/%% raias: etapas/.test(c) && (c.match(/subgraph/g) || []).length === 1, 'etapas NÃO viram raias (uma raia: ninguém além do leitor):\n' + c);
+  assert(/subgraph R1\["Responsável não especificado"\]/.test(c), 'sem responsável no texto: raia genérica, nada inventado:\n' + c);
+  assert((c.match(/^%% etapa:/gm) || []).length === 3, 'as 3 etapas viram agrupamento secundário:\n' + c);
   const m = autoLayout(c, { type: 'raias', title: 'PC' });
-  const bands = m.nodes.filter((n) => /^SEC_/.test(n.id)).sort((a, b) => a.y - b.y);
-  assert(bands.length === 3, 'uma faixa por etapa: ' + bands.length);
-  assert(bands.every((b, i) => !i || (b.y === bands[i - 1].y + bands[i - 1].h && b.x === bands[0].x && b.w === bands[0].w)), 'faixas empilhadas, encostadas e da mesma largura');
-  assert(!m.nodes.some((n) => /^RAIA_/.test(n.id)), 'nenhuma raia em coluna');
+  const rows = m.nodes.filter((n) => /^ETAPA_\d/.test(n.id)).sort((a, b) => a.y - b.y);
+  const lane = m.nodes.find((n) => /^RAIA_/.test(n.id));
+  assert(rows.length === 3 && rows.every((r, i) => !i || r.y === rows[i - 1].y + rows[i - 1].h), 'faixas de etapa empilhadas e encostadas');
+  assert(rows.every((r) => r.x < lane.x && r.x + r.w >= lane.x + lane.w), 'faixas atravessam as raias (com a coluna do nome à esquerda)');
   const boxes = m.nodes.filter((n) => n.shape !== 'container');
-  const xs = new Set(boxes.map((n) => Math.round(n.x + n.w / 2)));
-  assert(xs.size === 1, 'sem decisões: uma coluna central só (' + [...xs] + ')');
-  const ys = boxes.map((n) => n.y);
-  assert(m.nodes.find((n) => n.id === 'INICIO').y === Math.min(...ys) && m.nodes.find((n) => n.id === 'FIM').y === Math.max(...ys), 'Início em cima e Fim embaixo');
-  for (const e of m.edges) {
-    const A = m.nodes.find((n) => n.id === e.from), B = m.nodes.find((n) => n.id === e.to);
-    assert(B.y > A.y, 'todas as setas descem: ' + A.text + ' → ' + B.text);
-  }
+  const inRow = (n, r) => n.y >= r.y && n.y + n.h <= r.y + r.h;
+  const P = (re) => boxes.find((n) => re.test(n.text || ''));
+  assert(inRow(P(/^Abrir trava/), rows[0]) && inRow(P(/^Remover tampa/), rows[1]) && inRow(P(/^Ligar computador/), rows[2]), 'cada atividade na faixa da sua etapa');
+  for (const e of m.edges) { const A = m.nodes.find((n) => n.id === e.from), B = m.nodes.find((n) => n.id === e.to); assert(B.y > A.y, 'setas descem: ' + A.text + ' → ' + B.text); }
   const solo = heuristicMermaid(`Como publicar\n1. Acesse o site.\n2. Clique em Criar.\n3. Escolha o vídeo.\n4. Preencha o título.\n5. Escolha a visibilidade.\n6. Agende a data.\n7. Clique em Salvar.\n8. Compartilhe o link.`, 'Publicar', 'TD', 'raias');
-  assert(!/subgraph/.test(solo) && !/Fase \d/.test(solo), 'sem etapas nem responsáveis: nada de raias/fases inventadas:\n' + solo);
+  assert(!/Fase \d/.test(solo) && !/%% etapa:/.test(solo), 'sem etapas no documento: nada de fases inventadas:\n' + solo);
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -1,0 +1,12 @@
+Solicitação de compra de material
+Solicitação
+1. O solicitante preenche o pedido de compra.
+2. O solicitante anexa o orçamento e envia o pedido.
+Análise
+1. O analista confere o orçamento.
+2. O analista verifica se há verba disponível.
+3. Se não houver verba, o analista devolve o pedido ao solicitante, que ajusta o pedido e envia novamente.
+Aprovação
+1. O gestor avalia o pedido.
+2. Se o gestor aprovar, o comprador emite a ordem de compra. Caso contrário, o gestor arquiva o pedido.
+3. O solicitante recebe a confirmação da compra.

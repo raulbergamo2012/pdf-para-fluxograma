@@ -86,11 +86,15 @@ export const SHAPES = {
     draw: (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${h / 2}"/>` },
   // contêiner/seção; com n.band vira uma RAIA (swimlane) com faixa de cabeçalho sombreada
   container: { name: 'Contêiner com título', w: 320, h: 220, valign: 'top', bold: true,
-    draw: (x, y, w, h, n) => n?.band
+    draw: (x, y, w, h, n) => n?.sideHead
+      // faixa de ETAPA do Funcional: atravessa as raias; nome da etapa na coluna da esquerda
+      ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none"/><rect x="${x}" y="${y}" width="${n.sideHead}" height="${h}" fill="${n.headFill || '#eef1f4'}"/>`
+      : n?.band
       ? `<rect x="${x}" y="${y}" width="${w}" height="${h}"/><rect x="${x}" y="${y}" width="${w}" height="${n.head || 40}" fill="#0b2e3c" fill-opacity=".07" stroke="none"/>${path(`M${x} ${y + (n.head || 40)}H${x + w}`)}`
         + (n.accent ? `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="4" fill="${n.accent}" fill-opacity=".85" stroke="none"/>` : '')
       : `<rect x="${x}" y="${y}" width="${w}" height="${h}"/>${path(`M${x} ${y + 30}H${x + w}`)}`,
-    box: (x, y, w, h, n) => (n?.band ? { x: x + 8, y: y + 2, w: w - 16, h: (n.head || 40) - 2 } : { x, y: y + 2, w, h: 28 }) },
+    box: (x, y, w, h, n) => (n?.sideHead ? { x: x + 8, y: y + 6, w: n.sideHead - 16, h: Math.min(h - 12, 160), valign: 'top' }
+      : n?.band ? { x: x + 8, y: y + 2, w: w - 16, h: (n.head || 40) - 2 } : { x, y: y + 2, w, h: 28 }) },
   lane: { name: 'Raia (swimlane)', w: 220, h: 360, valign: 'top', bold: true, asContainer: true,
     draw: (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}"/><rect x="${x}" y="${y}" width="${w}" height="40" fill="#0b2e3c" fill-opacity=".07" stroke="none"/>${path(`M${x} ${y + 40}H${x + w}`)}`,
     box: (x, y, w) => ({ x: x + 6, y: y + 2, w: w - 12, h: 38 }) },
@@ -331,7 +335,7 @@ function textBox(n) {
   const s = SHAPES[n.shape] || SHAPES.rect;
   if (s.valign === 'below') return { x: n.x - 40, y: n.y + n.h + 4, w: n.w + 80, h: 40, valign: 'top' };
   const b = s.box ? s.box(n.x, n.y, n.w, n.h, n) : { x: n.x, y: n.y, w: n.w, h: n.h };
-  return { ...b, valign: s.valign || 'middle' };
+  return { valign: s.valign || 'middle', ...b };
 }
 
 function renderText(n) {

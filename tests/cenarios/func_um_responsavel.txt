@@ -1,0 +1,6 @@
+Manutenção preventiva da impressora
+1. O técnico desliga a impressora da tomada.
+2. O técnico remove o cartucho e limpa os contatos.
+3. O técnico verifica se há papel preso. Se houver papel preso, o técnico remove o papel com cuidado.
+4. O técnico recoloca o cartucho e liga a impressora.
+5. O técnico imprime uma página de teste.

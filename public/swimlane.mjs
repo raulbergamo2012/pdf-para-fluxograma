@@ -29,15 +29,8 @@ export function autoLayout(code, opts = {}) {
   // Processo (linear): UM fluxo contínuo de cima para baixo, sem colunas nem caixas de seção — losangos abrem
   // Não à esquerda / Sim à direita, como no Decisão. Por isso usa o mesmo desenho, ignorando os subgraphs.
   const asked = opts.type || codeType(code) || 'decisao';
+  const type = asked === 'processo' ? 'decisao' : asked;
   const g = parseFlowchart(code);
-  const LR0 = String(opts.direction || g.direction || 'TD').toUpperCase().startsWith('L');
-  // Funcional SEM responsáveis no documento (raias de ETAPA, "%% raias: etapas", ou subgrafos "Passo/Etapa/Fase N"):
-  // não há funções para separar em colunas — o fluxo é VERTICAL, de cima para baixo, numa coluna central, e cada etapa
-  // vira uma faixa horizontal com título (o fluxo atravessa as faixas). Raias em colunas só com responsáveis reais.
-  const stageSgs = g.subgraphs.filter((s) => s.nodes.length);
-  const stageBands = asked === 'raias' && !LR0 && (/^\s*%%\s*raias:\s*etapas/m.test(code)
-    || (stageSgs.length >= 2 && stageSgs.every((s) => /^(passo|etapa|fase|parte|step|stage)\s*\d/i.test(decode(s.label || '')))));
-  const type = asked === 'processo' || stageBands ? 'decisao' : asked;
   if (asked === 'processo') { g.subgraphs = []; }
   const P = { fill: '#ffffff', stroke: '#5f6b76', color: '#1a1a1a', line: '#333333', decisionFill: '#fff8e1', decisionStroke: '#c99a2e',
     terminalFill: '#e8f5e9', terminalStroke: '#2e7d32', errorFill: '#ffebee', errorStroke: '#c62828', noteFill: '#fffde7', noteStroke: '#9e9e9e',
@@ -61,7 +54,7 @@ export function autoLayout(code, opts = {}) {
   const nSteps = ids.filter((id) => !isNote(id)).length;
   const columns = type === 'processo' && !LR && sections.length >= 2 && nSteps > 14;
   // fluxograma ramificado POR ETAPAS: cada etapa do documento vira um bloco com título (agrupamento visual)
-  const staged = (asked === 'decisao' || stageBands) && !LR && sections.length >= 2;
+  const staged = asked === 'decisao' && !LR && sections.length >= 2;
   const lanes = useLanes && leafSgs.length ? leafSgs : columns ? sections : [{ id: '_', label: '', nodes: ids }];
   const laneOf = new Map();
   lanes.forEach((l, i) => l.nodes.forEach((id) => laneOf.set(id, i)));
@@ -70,6 +63,12 @@ export function autoLayout(code, opts = {}) {
   // seguinte sobe pelo corredor da coluna ao lado, sempre em 90°.
   const phases = useLanes && !LR && type === 'raias' && lanes.length >= 2 && (/^\s*%%\s*raias:\s*etapas/m.test(code)
     || lanes.every((l) => /^(passo|etapa|fase|parte|step|stage)\s*\d/i.test(decode(l.label || ''))));
+  // ETAPAS do processo (agrupamento SECUNDÁRIO do Funcional): "%% etapa: Título :: P1 P2 …". Viram faixas horizontais
+  // que atravessam TODAS as raias — as raias continuam sendo os responsáveis; a etapa só diz em que fase a atividade está
+  const stageDefs = [...code.matchAll(/^\s*%%\s*etapa:\s*(.+?)\s*::\s*(.*)$/gm)].map((m) => ({ title: m[1].trim(), ids: m[2].trim().split(/\s+/).filter(Boolean) }));
+  const stageRows = useLanes && !LR && type === 'raias' && !phases && stageDefs.length >= 2;
+  const stageIdx = new Map();
+  if (stageRows) stageDefs.forEach((st, k) => st.ids.forEach((id) => { if (g.nodes.has(id) && !stageIdx.has(id)) stageIdx.set(id, k); }));
   for (let pass = 0; pass < 3; pass++) for (const id of ids) {
     if (laneOf.has(id)) continue;
     const nb = [...flowEdges, ...noteEdges].find((e) => (e.to === id && laneOf.has(e.from)) || (e.from === id && laneOf.has(e.to)));
@@ -103,22 +102,43 @@ export function autoLayout(code, opts = {}) {
   const anc = new Map(); const rank = new Map(); const cells = new Map();
   const key = (l, r) => `${l}:${r}`;
   const cell = (l, r) => cells.get(key(l, r)) || cells.set(key(l, r), []).get(key(l, r));
-  for (const id of topo) {
-    const a = new Set();
-    preds.get(id).forEach((p) => { a.add(p); anc.get(p)?.forEach((x) => a.add(x)); });
-    anc.set(id, a);
-    const lane = laneOf.get(id);
-    let r = 0;
-    // mesma raia: avança uma linha; outra raia (só no Funcional): pode ficar na mesma linha
-    // colunas do Processo: cada etapa começa no topo da sua coluna
-    // fases: a etapa seguinte começa no topo da coluna — exceto quando vem de um losango (métodos alternativos):
-    // aí o ramo começa NA ALTURA do losango, e a seta segue reta para o lado, sem subir
-    preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || (phases && g.nodes.get(p)?.kind !== 'decision') ? 0 : rank.get(p)); });
-    if (type === 'processo' && !columns) r = Math.max(r, ...[...rank.values()].map((x) => x + 1), 0);   // coluna única e reta
-    if (columns) r = Math.max(r, ...steps.filter((o) => rank.has(o) && laneOf.get(o) === lane).map((o) => rank.get(o) + 1), 0);
-    while (cell(lane, r).some((o) => a.has(o) || anc.get(o)?.has(id))) r++;
-    rank.set(id, r);
-    cell(lane, r).push(id);
+  const runRanks = (minRank) => {
+    anc.clear(); rank.clear(); cells.clear();
+    for (const id of topo) {
+      const a = new Set();
+      preds.get(id).forEach((p) => { a.add(p); anc.get(p)?.forEach((x) => a.add(x)); });
+      anc.set(id, a);
+      const lane = laneOf.get(id);
+      let r = 0;
+      // mesma raia: avança uma linha; outra raia (só no Funcional): pode ficar na mesma linha
+      // colunas do Processo: cada etapa começa no topo da sua coluna
+      // fases: a etapa seguinte começa no topo da coluna — exceto quando vem de um losango (métodos alternativos):
+      // aí o ramo começa NA ALTURA do losango, e a seta segue reta para o lado, sem subir
+      // Funcional (raias de responsáveis): passar para a raia VIZINHA pode ser na mesma linha (seta reta para o lado);
+      // para uma raia mais distante, a atividade desce uma linha — a seta não precisa passar por trás das outras raias
+      const farLane = (p) => useLanes && !LR && type === 'raias' && !phases && Math.abs(laneOf.get(p) - lane) > 1 ? 1 : 0;
+      preds.get(id).forEach((p) => { r = Math.max(r, laneOf.get(p) === lane ? rank.get(p) + 1 : columns || (phases && g.nodes.get(p)?.kind !== 'decision') ? 0 : rank.get(p) + farLane(p)); });
+      if (type === 'processo' && !columns) r = Math.max(r, ...[...rank.values()].map((x) => x + 1), 0);   // coluna única e reta
+      if (columns) r = Math.max(r, ...steps.filter((o) => rank.has(o) && laneOf.get(o) === lane).map((o) => rank.get(o) + 1), 0);
+      // losango com duas saídas para a MESMA raia: a segunda desce uma linha (cada saída por uma ponta, sem se cruzarem)
+      for (const p of preds.get(id)) if (g.nodes.get(p)?.kind === 'decision' && laneOf.get(p) !== lane && useLanes && !LR && type === 'raias' && !phases
+        && fwd.some((e) => e.from === p && e.to !== id && laneOf.get(e.to) === lane && rank.get(e.to) === rank.get(p))) r = Math.max(r, rank.get(p) + 1);
+      r = Math.max(r, minRank(id));
+      while (cell(lane, r).some((o) => a.has(o) || anc.get(o)?.has(id))) r++;
+      rank.set(id, r);
+      cell(lane, r).push(id);
+    }
+  };
+  let stageMin = new Map();
+  runRanks((id) => stageMin.get(stageIdx.get(id)) ?? 0);
+  if (stageRows) for (let it = 0; it < 6; it++) {
+    // cada etapa começa numa linha abaixo de todas as atividades das etapas anteriores (em qualquer raia)
+    const maxR = stageDefs.map((_, k) => Math.max(-1, ...[...stageIdx].filter(([id, kk]) => kk === k && rank.has(id)).map(([id]) => rank.get(id))));
+    const next = new Map(); let acc0 = -1;
+    stageDefs.forEach((_, k) => { if (k) next.set(k, acc0 + 1); acc0 = Math.max(acc0, maxR[k]); });
+    if ([...next].every(([k, v]) => stageMin.get(k) === v)) break;
+    stageMin = next;
+    runRanks((id) => stageMin.get(stageIdx.get(id)) ?? 0);
   }
   for (const id of steps) if (!rank.has(id)) { rank.set(id, 0); cell(laneOf.get(id), 0).push(id); }
   // Funcional: o Fim fica SEMPRE na última linha — os caminhos descem até ele, em vez de uma seta longa atravessar
@@ -186,26 +206,43 @@ export function autoLayout(code, opts = {}) {
   const rowMain = (r) => Math.max(40, ...[...cells.entries()].filter(([k]) => Number(k.split(':')[1]) === r).flatMap(([, v]) => v.map(along)),
     ...[...noteOf].filter(([, s]) => s && rank.get(s) === r).map(([n]) => along(n)));
   const cellCross = Math.max(...steps.map(across)) + GAP_CROSS;
-  // Funcional vertical (sem raias): cada caminho mantém a sua COLUNA (não recentraliza a cada linha). Ramos de um
-  // losango abrem para os lados (Não à esquerda, Sim à direita); convergências voltam à coluna de origem; colisões
-  // empurram o vizinho. Assim um ramo nunca "pula" para baixo de outro ramo e as setas ficam curtas e retas.
+  // Funcional (raias de responsáveis, vertical): dentro de cada raia, cada caminho mantém a sua COLUNA — o ramo de um
+  // losango abre para o lado (Não à esquerda, Sim à direita; 3+ métodos com duas colunas entre eles), a convergência
+  // volta para a média das origens e uma colisão empurra o vizinho. Assim um ramo nunca passa para baixo de outro.
   const colOf = new Map();
-  const useCols = stageBands && !LR;
-  if (useCols) {
+  const laneCols = useLanes && !LR && type === 'raias' && !phases;
+  // para que lado (raia) o caminho que começa em "id" passa a responsabilidade: −1 esquerda, +1 direita, 0 fica
+  const pullOf = (id, l) => {
+    const seen = new Set([id]); const q = [id]; let sum = 0, n = 0;
+    while (q.length && seen.size < 40) {
+      const x = q.shift();
+      for (const e of fwd.filter((f) => f.from === x)) {
+        if (laneOf.get(e.to) !== l) { sum += Math.sign(laneOf.get(e.to) - l); n++; continue; }
+        if (!seen.has(e.to)) { seen.add(e.to); q.push(e.to); }
+      }
+    }
+    return n ? sum / n : 0;
+  };
+  if (laneCols) {
     const brk = (id, p) => { const e = flowEdges.find((x) => x.from === p && x.to === id); return !e ? 1 : /^n[aã]o\b/i.test(e.label) ? 0 : /^sim\b/i.test(e.label) ? 2 : 1; };
-    for (let r = 0; r <= maxRank; r++) {
-      const row = (cells.get(key(0, r)) || []).slice();
+    for (let r = 0; r <= maxRank; r++) for (let l = 0; l < nLanes; l++) {
+      const row = (cells.get(key(l, r)) || []).slice();
       for (const id of row) {
-        const ps = preds.get(id).filter((p) => colOf.has(p));
+        const ps = preds.get(id).filter((p) => colOf.has(p) && laneOf.get(p) === l);
         let c = 0;
         if (ps.length === 1) {
           const p = ps[0];
-          const kids = fwd.filter((e) => e.from === p).map((e) => e.to);
+          const kids = fwd.filter((e) => e.from === p && laneOf.get(e.to) === l).map((e) => e.to);
           if (kindOf(p) === 'diamond' && kids.length >= 2) {
-            const sorted = kids.slice().sort((a, b) => brk(a, p) - brk(b, p) || order(a) - order(b));
-            // 3+ saídas (métodos alternativos): duas colunas entre os ramos — cada ramo tem espaço para os próprios losangos
+            // 3+ métodos: o ramo que passa a atividade para uma raia à direita fica à direita (e vice-versa),
+            // para a passagem de responsabilidade não atravessar os outros ramos
+            const sorted = kids.slice().sort((a, b) => (kids.length > 2 ? pullOf(a, l) - pullOf(b, l) : 0) || brk(a, p) - brk(b, p) || order(a) - order(b));
             c = colOf.get(p) + (sorted.indexOf(id) - (sorted.length - 1) / 2) * (kids.length > 2 ? 2 : 1);
           } else c = colOf.get(p);
+        } else if (!ps.length && preds.get(id).length) {
+          // volta de outra raia: retoma a coluna do caminho que saiu desta raia (não cai no centro)
+          const back = preds.get(id).flatMap((p) => preds.get(p)).filter((q) => colOf.has(q) && laneOf.get(q) === l);
+          if (back.length) c = Math.round((back.reduce((x, q) => x + colOf.get(q), 0) / back.length) * 2) / 2;
         } else if (ps.length > 1) {
           let sum = 0, w = 0;
           for (const p of ps) { const wt = kindOf(p) === 'diamond' ? 2 : 1; sum += colOf.get(p) * wt; w += wt; }
@@ -214,11 +251,13 @@ export function autoLayout(code, opts = {}) {
         colOf.set(id, c);
       }
       row.sort((a, b) => colOf.get(a) - colOf.get(b) || order(a) - order(b));
+      // colisão: empurra para o lado onde há menos gente (a partir do centro)
       for (let i = 1; i < row.length; i++) if (colOf.get(row[i]) - colOf.get(row[i - 1]) < 1) colOf.set(row[i], colOf.get(row[i - 1]) + 1);
     }
   }
-  const colMin = useCols ? Math.min(0, ...colOf.values()) : 0, colMax = useCols ? Math.max(0, ...colOf.values()) : 0;
-  const slotsIn = (l) => (useCols ? Math.round(colMax - colMin) + 1 : Math.max(1, ...Array.from({ length: maxRank + 1 }, (_, r) => (cells.get(key(l, r)) || []).length)));
+  const colMinL = (l) => Math.min(0, ...steps.filter((id) => laneOf.get(id) === l && colOf.has(id)).map((id) => colOf.get(id)));
+  const colMaxL = (l) => Math.max(0, ...steps.filter((id) => laneOf.get(id) === l && colOf.has(id)).map((id) => colOf.get(id)));
+  const slotsIn = (l) => (laneCols ? Math.round(colMaxL(l) - colMinL(l)) + 1 : Math.max(1, ...Array.from({ length: maxRank + 1 }, (_, r) => (cells.get(key(l, r)) || []).length)));
   // seções do Processo empilhadas: espaço para o título de cada seção
   // Início entra na primeira etapa e Fim na última (ficam dentro do bloco, sem a seta cruzar o título)
   const ownSection = (id) => sections.find((s) => s.nodes.includes(id))?.id || '';
@@ -239,10 +278,17 @@ export function autoLayout(code, opts = {}) {
   const oneSide = useLanes || columns;                                 // notas só à direita (raias e colunas de etapas)
   const rawLane = (l) => slotsIn(l) * cellCross + 2 * PAD - GAP_CROSS + noteSpace(l) * (oneSide ? 1 : 2);
   const laneW = useLanes ? Math.max(LR ? 120 : 210, ...lanes.map((_, l) => rawLane(l))) + (phases ? 56 : 0) : 0;   // fases: corredor lateral mais largo para as passagens
-  const titleLines = (t) => wrapText(decode(t), (LR ? 420 : laneW) - 20, 14, true).length;
+  const titleW = (t) => Math.min(320, measure(decode(t), 14, true) + 40);
+  const titleLines = (t) => wrapText(decode(t), (LR ? 420 : laneCols ? 210 : laneW) - 20, 14, true).length;
   const HEAD = useLanes ? Math.max(40, ...lanes.map((ln) => titleLines(ln.label) * 18 + 16)) : 0;
   const mainPos = []; let acc = (LR ? 0 : HEAD) + PAD + 8;
+  const stageRange = stageRows ? stageDefs.map((_, k) => {
+    const rs = [...stageIdx].filter(([, kk]) => kk === k).map(([id]) => rank.get(id)).filter((x) => x != null);
+    return rs.length ? [Math.min(...rs), Math.max(...rs)] : null;
+  }) : [];
+  const stageStartRows = new Set(stageRange.filter(Boolean).slice(1).map((r) => r[0]));
   for (let r = 0; r <= maxRank; r++) {
+    if (stageStartRows.has(r)) acc += 18;   // respiro na divisa entre etapas
     if (firstRankOfSection.has(r)) acc += SEC_HEAD + 14;
     mainPos[r] = acc; acc += rowMain(r) + GAP_MAIN;
     if (lastRankOfSection.has(r)) acc += 14;
@@ -252,15 +298,17 @@ export function autoLayout(code, opts = {}) {
   const colGap = columns ? 40 : 0;                                    // corredor entre as colunas de etapas
   for (let l = 0; l < nLanes; l++) {
     laneStart[l] = x0;
-    laneSize[l] = useLanes ? laneW + (LR ? HEAD : 0) : Math.max(columns ? 240 : 200, rawLane(l));
+    // Funcional vertical: cada raia com a largura das SUAS colunas (sem raia larga e vazia)
+    laneSize[l] = laneCols ? Math.max(230, rawLane(l), titleW(lanes[l].label)) : useLanes ? laneW + (LR ? HEAD : 0) : Math.max(columns ? 240 : 200, rawLane(l));
     x0 += laneSize[l] + colGap;
   }
 
   const nodes = [];
-  const titled = (useLanes || stageBands) && opts.title;
+  const titled = useLanes && opts.title;
   const outer = type === 'processo' ? g.subgraphs.find((s) => !s.parent && g.subgraphs.some((c) => c.parent === s.id)) : null;
   const titleH = titled || outer ? 30 : 0;
-  const OX = 40, OY = 40 + titleH;
+  const STW = stageRows ? 132 : 0;   // coluna das etapas, à esquerda das raias
+  const OX = 40 + STW, OY = 40 + titleH;
   if (useLanes) lanes.forEach((ln, l) => {
     const box = LR ? { x: OX, y: OY + laneStart[l], w: mainLen, h: laneSize[l] } : { x: OX + laneStart[l], y: OY, w: laneSize[l], h: mainLen };
     for (const k of Object.keys(box)) box[k] = Math.round(box[k]);
@@ -268,6 +316,19 @@ export function autoLayout(code, opts = {}) {
     // responsável/etapa de cima a baixo sem confundir as colunas
     nodes.push({ id: 'RAIA_' + (ln.id || l), shape: 'container', band: true, head: HEAD, ...box, text: decode(ln.label), fill: l % 2 ? (P.laneAltFill || '#f6f8fa') : P.laneFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14, accent: P.laneAccent || P.stroke });
   });
+  if (stageRows) {
+    // faixas das etapas: a coluna da esquerda traz o nome da etapa; uma linha divide as etapas atravessando as raias
+    const totalW = laneStart[nLanes - 1] + laneSize[nLanes - 1];
+    const ranges = stageRange.map((r, k) => (r ? { k, r } : null)).filter(Boolean);
+    const bodyTop = OY + HEAD, bodyBot = OY + mainLen;
+    nodes.push({ id: 'ETAPA_HEAD', shape: 'container', x: 40, y: OY, w: STW, h: HEAD, text: 'Etapa', fill: '#eef1f4', stroke: P.laneStroke, color: '#1d2b36', fontSize: 13, bold: true, locked: true });
+    ranges.forEach(({ k, r }, i) => {
+      const top = i === 0 ? bodyTop : Math.round((mainPos[ranges[i - 1].r[1]] + rowMain(ranges[i - 1].r[1]) + mainPos[r[0]]) / 2);
+      const bot = i === ranges.length - 1 ? bodyBot : Math.round((mainPos[r[1]] + rowMain(r[1]) + mainPos[ranges[i + 1].r[0]]) / 2);
+      nodes.push({ id: 'ETAPA_' + (k + 1), shape: 'container', stageRow: true, sideHead: STW, x: 40, y: Math.round(i === 0 ? top : OY + top), w: Math.round(OX + totalW) - 40, h: Math.round((i === ranges.length - 1 ? bot : OY + bot) - (i === 0 ? top : OY + top)),
+        text: stageDefs[k].title, fill: 'none', headFill: k % 2 ? '#e9edf1' : '#f1f4f7', stroke: P.laneStroke, color: '#1d2b36', fontSize: 13, bold: true, locked: true });
+    });
+  }
   const style = (id) => {
     const k = kindOf(id), c = g.classes.get(id) || new Set();
     if (k === 'note') return { shape: 'rounded', fill: P.noteFill, stroke: P.noteStroke, dashed: true, color: '#555555' };
@@ -313,9 +374,10 @@ export function autoLayout(code, opts = {}) {
     const inner = laneSize[l] - head - (oneSide ? noteSpace(l) : 2 * noteSpace(l));
     const startCross = laneStart[l] + head + (oneSide ? 0 : noteSpace(l)) + inner / 2 - span / 2;
     const cMain = mainPos[r] + rowMain(r) / 2;
-    if (useCols) {
-      const base = laneStart[l] + PAD + noteSpace(l);
-      list.forEach((id) => place(id, base + (colOf.get(id) - colMin) * cellCross + (cellCross - GAP_CROSS) / 2, cMain));
+    if (laneCols) {
+      // colunas estáveis, centralizadas na raia
+      const cols = slotsIn(l), base = laneStart[l] + (inner - (cols * cellCross - GAP_CROSS)) / 2;
+      list.forEach((id) => place(id, base + (colOf.get(id) - colMinL(l)) * cellCross + (cellCross - GAP_CROSS) / 2, cMain));
       continue;
     }
     list.forEach((id, i) => place(id, startCross + i * cellCross + (cellCross - GAP_CROSS) / 2, cMain));
@@ -340,36 +402,16 @@ export function autoLayout(code, opts = {}) {
       const box = col >= 0 ? { x: OX + laneStart[col] + 8, y: OY + a0, w: laneSize[col] - 16, h: a1 - a0 }
         : LR ? { x: OX + a0, y: lo, w: a1 - a0, h: hi - lo } : { x: lo, y: OY + a0, w: hi - lo, h: a1 - a0 };
       for (const k of Object.keys(box)) box[k] = Math.round(box[k]);
-      // Funcional por etapas: faixas alternadas com a faixa de cor no cabeçalho (mesma identidade das raias)
-      const bandFill = stageBands ? (secs.length % 2 ? (P.laneAltFill || '#f6f8fa') : P.laneFill) : P.sectionFill;
-      secs.push({ id: 'SEC_' + sg.id, shape: 'container', band: true, head: SEC_HEAD, ...box, text: decode(sg.label), fill: bandFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14, ...(stageBands ? { accent: P.laneAccent || P.stroke, align: 'left' } : {}) });   // título à esquerda: a seta central não passa por cima dele
-    }
-    // Funcional por etapas: faixas encostadas umas nas outras (sem vãos), como raias horizontais
-    if (stageBands && secs.length) {
-      secs.sort((a, b) => a.y - b.y);
-      for (let i = 0; i < secs.length - 1; i++) {
-        const mid = Math.round((secs[i].y + secs[i].h + secs[i + 1].y) / 2);
-        secs[i].h = mid - secs[i].y; secs[i + 1].h += secs[i + 1].y - mid; secs[i + 1].y = mid;
-      }
+      secs.push({ id: 'SEC_' + sg.id, shape: 'container', band: true, head: SEC_HEAD, ...box, text: decode(sg.label), fill: P.sectionFill, stroke: P.laneStroke, color: '#1d2b36', fontSize: 14 });
     }
     nodes.unshift(...secs);
   }
   // título geral (raias: nome do processo; processo: bloco principal com Início e Fim dentro)
   if (titled || outer) {
-    const flush = useLanes || stageBands;   // título encostado nas raias/faixas
-    const x1 = Math.min(...nodes.map((n) => n.x)) - (flush ? 0 : PAD), y1 = Math.min(OY, ...nodes.map((n) => n.y)) - titleH - (flush ? 0 : 8);
-    const x2 = Math.max(...nodes.map((n) => n.x + n.w)) + (flush ? 0 : PAD), y2 = Math.max(...nodes.map((n) => n.y + n.h)) + (flush ? 0 : PAD);
+    const x1 = Math.min(...nodes.map((n) => n.x)) - (useLanes ? 0 : PAD), y1 = Math.min(OY, ...nodes.map((n) => n.y)) - titleH - (useLanes ? 0 : 8);
+    const x2 = Math.max(...nodes.map((n) => n.x + n.w)) + (useLanes ? 0 : PAD), y2 = Math.max(...nodes.map((n) => n.y + n.h)) + (useLanes ? 0 : PAD);
     nodes.unshift({ id: 'TITULO', shape: 'container', x: Math.round(x1), y: Math.round(y1), w: Math.round(x2 - x1), h: Math.round(y2 - y1),
-      text: titled ? opts.title : decode(outer.label), fill: flush ? '#f4f7f9' : '#fbfbfc', stroke: P.laneStroke, color: '#1d2b36', fontSize: 15, bold: true });
-    if (stageBands) {
-      // a 1ª faixa começa logo abaixo do título e a última vai até o fim do quadro
-      const bands = nodes.filter((n) => /^SEC_/.test(n.id)).sort((a, b) => a.y - b.y);
-      if (bands.length) {
-        const top = Math.round(y1 + titleH), bot = Math.round(y2);
-        bands[0].h += bands[0].y - top; bands[0].y = top;
-        const last = bands[bands.length - 1]; last.h = Math.max(last.h, bot - last.y);
-      }
-    }
+      text: titled ? opts.title : decode(outer.label), fill: useLanes ? '#f4f7f9' : '#fbfbfc', stroke: P.laneStroke, color: '#1d2b36', fontSize: 15, bold: true });
   }
 
   const hitsAny = (segs, A, B) => [...pos.values()].some((n) => n !== A && n !== B && segs.some(([x1, y1, x2, y2]) =>
@@ -457,46 +499,57 @@ export function autoLayout(code, opts = {}) {
   };
   let sourceId = null;
 
+  // RETORNO para outra raia, mais acima ("Corrigir" → "Analisar", "Não" → "Fazer triagem"): três caminhos possíveis,
+  // na ordem de preferência; vale o primeiro que não passa por cima de nenhum bloco e não usa uma ponta já ocupada
+  const idOfBox = (n) => [...pos.entries()].find(([, v]) => v === n)?.[0];
   const backCross = (A, B) => {
+    const aId = idOfBox(A), bId = idOfBox(B);
     const fromLeft = A.x + A.w / 2 < B.x + B.w / 2;
-    const ax = Math.round(A.x + A.w / 2), by = Math.round(B.y + B.h / 2), bx = fromLeft ? B.x : B.x + B.w;
-    // corredor: a meio caminho entre o destino e o bloco mais próximo do lado da origem, na altura do destino
+    const ax = Math.round(A.x + A.w / 2), ay = Math.round(A.y + A.h / 2), by = Math.round(B.y + B.h / 2), bcx = Math.round(B.x + B.w / 2);
+    const bSide = fromLeft ? B.x : B.x + B.w, aSide = fromLeft ? A.x + A.w : A.x;
+    const topTaken = fwd.some((x) => x.to === aId && laneOf.get(x.from) === laneOf.get(aId) && pos.get(x.from) && pos.get(x.from).y < A.y) || kindOf(aId) === 'diamond';
+    // lateral do destino ocupada só se uma seta SAI por ela (chegar junto com outra seta é uma convergência normal)
+    const bSideTaken = flowEdges.some((x) => x.from === bId && pos.get(x.to)
+      && (fromLeft ? pos.get(x.to).x + 1 < B.x : pos.get(x.to).x > B.x + B.w - 1) && Math.abs(pos.get(x.to).y + pos.get(x.to).h / 2 - by) < 6);
+    const bBottomTaken = fwd.some((x) => x.from === bId && pos.get(x.to) && pos.get(x.to).y > B.y + B.h && Math.abs(pos.get(x.to).x + pos.get(x.to).w / 2 - bcx) < 6);
+    const aSideTaken = flowEdges.some((x) => (x.from === aId || x.to === aId) && x.to !== bId && pos.get(x.from === aId ? x.to : x.from)
+      && Math.abs(pos.get(x.from === aId ? x.to : x.from).y + pos.get(x.from === aId ? x.to : x.from).h / 2 - ay) < 6
+      && (fromLeft ? pos.get(x.from === aId ? x.to : x.from).x > A.x + A.w - 1 : pos.get(x.from === aId ? x.to : x.from).x + 1 < A.x));
+    // corredor vertical: entre a origem e o destino, fora das divisas de raia
     const sideNodes = [...pos.values()].filter((n) => n !== B && n.y < by + 4 && n.y + n.h > by - 4 && (fromLeft ? n.x + n.w <= B.x : n.x >= B.x + B.w));
     const near = fromLeft ? Math.max(A.x + A.w, ...sideNodes.map((n) => n.x + n.w)) : Math.min(A.x, ...sideNodes.map((n) => n.x));
     let cx = Math.round(fromLeft ? Math.max(near + 24, (near + B.x) / 2) : Math.min(near - 24, (near + B.x + B.w) / 2));
-    // não corre em cima da divisa entre raias
     for (let l = 1; l < nLanes; l++) { const bd = OX + laneStart[l]; if (Math.abs(cx - bd) < 14) cx += fromLeft ? 22 : -22; }
-    if (fromLeft ? cx >= B.x - 8 : cx <= B.x + B.w + 8) return null;
-    const levels = [...new Set([A.y - 16, ...[...pos.values()].map((n) => n.y + n.h + 14)].map(Math.round))].filter((y) => y <= A.y - 10 && y > by + 10);
-    let best = null;
-    for (const gy of levels) {
-      const path = [[ax, A.y, ax, gy], [ax, gy, cx, gy], [cx, gy, cx, by], [cx, by, bx, by]];
-      if (hitsAny(path, A, B)) continue;
-      const len = Math.abs(A.y - gy) + Math.abs(gy - by);
-      if (!best || len < best.len) best = { gy, len };
+    const cands = [];
+    // 1. sai por cima, corredor, entra pela lateral do destino
+    if (!topTaken && !bSideTaken && (fromLeft ? cx < B.x - 8 : cx > B.x + B.w + 8)) {
+      const levels = [...new Set([A.y - 16, ...[...pos.values()].map((n) => n.y + n.h + 14)].map(Math.round))].filter((y) => y <= A.y - 10 && y > by + 10);
+      for (const gy of levels) {
+        const path = [[ax, A.y, ax, gy], [ax, gy, cx, gy], [cx, gy, cx, by], [cx, by, bSide, by]];
+        if (!hitsAny(path, A, B)) cands.push({ len: Math.abs(A.y - gy) + Math.abs(gy - by), r: { fromPort: sides.bwd, toPort: fromLeft ? sides.a : sides.b, points: [[ax, gy], [cx, gy], [cx, by]] } });
+      }
     }
-    if (!best) return null;
-    return { fromPort: sides.bwd, toPort: fromLeft ? sides.a : sides.b, points: [[ax, best.gy], [cx, best.gy], [cx, by]] };
-  };
-
-  const colBackCache = new Map();
-  const colBack = (A, B) => {
-    const k = A.id + '>' + B.id;
-    if (colBackCache.has(k)) return colBackCache.get(k);
-    const y1 = Math.min(A.y, B.y) - 4, y2 = Math.max(A.y + A.h, B.y + B.h) + 4;
-    const mid = [...pos.values()].filter((n) => n.y + n.h > y1 && n.y < y2);
-    const ay = Math.round(A.y + A.h / 2), by = Math.round(B.y + B.h / 2);
-    const opts2 = [];
-    for (const left of [true, false]) {
-      const x = Math.round(left ? Math.min(...mid.map((n) => n.x)) - 18 : Math.max(...mid.map((n) => n.x + n.w)) + 18);
-      const ax = left ? A.x : A.x + A.w, bx = left ? B.x : B.x + B.w;
-      const segs = [[ax, ay, x, ay], [x, ay, x, by], [x, by, bx, by]];
-      if (hitsAny(segs, A, B)) continue;
-      opts2.push({ len: Math.abs(x - ax) + Math.abs(x - bx), r: { fromPort: left ? sides.a : sides.b, toPort: left ? sides.a : sides.b, points: [[x, ay], [x, by]] } });
+    // 2. sai pela lateral virada para o destino, sobe pelo corredor e entra pela lateral do destino
+    if (!aSideTaken && !bSideTaken && (fromLeft ? cx > A.x + A.w + 8 && cx < B.x - 8 : cx < A.x - 8 && cx > B.x + B.w + 8)) {
+      const path = [[aSide, ay, cx, ay], [cx, ay, cx, by], [cx, by, bSide, by]];
+      if (!hitsAny(path, A, B)) cands.push({ len: Math.abs(ay - by) + 40, r: { fromPort: fromLeft ? sides.b : sides.a, toPort: fromLeft ? sides.a : sides.b, points: [[cx, ay], [cx, by]] } });
     }
-    const r = opts2.sort((a, b) => a.len - b.len)[0]?.r || null;
-    colBackCache.set(k, r);
-    return r;
+    // 3. sai pela lateral, sobe pelo corredor até logo abaixo do destino e entra por BAIXO
+    if (!aSideTaken && !bBottomTaken) {
+      const gy = Math.round(B.y + B.h + 16);
+      const x0 = Math.round(fromLeft ? A.x + A.w + 18 : A.x - 18);
+      const path = [[aSide, ay, x0, ay], [x0, ay, x0, gy], [x0, gy, bcx, gy], [bcx, gy, bcx, B.y + B.h]];
+      if (gy < ay - 10 && !hitsAny(path, A, B)) cands.push({ len: Math.abs(ay - gy) + Math.abs(x0 - bcx) + 80, r: { fromPort: fromLeft ? sides.b : sides.a, toPort: sides.fwd, points: [[x0, ay], [x0, gy], [bcx, gy]] } });
+    }
+    // 4. losango com as laterais ocupadas: sai por BAIXO, desce um pouco, vai ao corredor, sobe e entra por baixo do destino
+    const aBottomTaken = fwd.some((x) => x.from === aId && pos.get(x.to) && pos.get(x.to).y > A.y + A.h && Math.abs(pos.get(x.to).x + pos.get(x.to).w / 2 - ax) < 6);
+    if (!cands.length && !aBottomTaken && !bBottomTaken) {
+      const y1 = Math.round(A.y + A.h + 14), gy = Math.round(B.y + B.h + 16);
+      const x0 = Math.round(fromLeft ? Math.max(A.x + A.w + 18, cx) : Math.min(A.x - 18, cx));
+      const path = [[ax, A.y + A.h, ax, y1], [ax, y1, x0, y1], [x0, y1, x0, gy], [x0, gy, bcx, gy], [bcx, gy, bcx, B.y + B.h]];
+      if (gy < y1 - 10 && !hitsAny(path, A, B)) cands.push({ len: 9999, r: { fromPort: sides.fwd, toPort: sides.fwd, points: [[ax, y1], [x0, y1], [x0, gy], [bcx, gy]] } });
+    }
+    return cands.sort((a, b) => a.len - b.len)[0]?.r || null;
   };
 
   // ------------------------------------------------------------ setas (ângulo reto, saindo pelo lado certo)
@@ -512,20 +565,6 @@ export function autoLayout(code, opts = {}) {
     if (below.length) bottomExit.set(id, below[0]);
   }
   const usedSide = new Map();
-  // Funcional vertical: portas do losango — cada saída sai pelo lado do seu destino; se as duas vão para o mesmo lado,
-  // a mais próxima sai por baixo (nunca duas setas saindo emboladas pela mesma ponta)
-  const dPort = new Map();
-  if (useCols) for (const id of steps) {
-    if (kindOf(id) !== 'diamond') continue;
-    const A = pos.get(id), cx = A.x + A.w / 2;
-    const list = flowEdges.filter((e) => e.from === id && !back.has(e) && pos.get(e.to) && pos.get(e.to).y > A.y + A.h / 2);
-    const dx = (e) => pos.get(e.to).x + pos.get(e.to).w / 2 - cx;
-    const left = list.filter((e) => dx(e) < -4).sort((a, b) => dx(b) - dx(a)), right = list.filter((e) => dx(e) > 4).sort((a, b) => dx(a) - dx(b));
-    let bottomUsed = list.some((e) => Math.abs(dx(e)) <= 4);
-    if (!bottomUsed && !left.length && right.length >= 2) { dPort.set(right.shift(), sides.fwd); bottomUsed = true; }
-    if (!bottomUsed && !right.length && left.length >= 2) { dPort.set(left.shift(), sides.fwd); bottomUsed = true; }
-    left.forEach((e) => dPort.set(e, sides.a)); right.forEach((e) => dPort.set(e, sides.b));
-  }
   flowEdges.forEach((e, i) => {
     const A = pos.get(e.from), B = pos.get(e.to);
     if (!A || !B) return;
@@ -534,7 +573,19 @@ export function autoLayout(code, opts = {}) {
     const dCross = LR ? bc[1] - ac[1] : bc[0] - ac[0];
     const crossSide = dCross > 0 ? sides.b : sides.a;
     let fromPort, toPort, points;
-    if (columns && laneOf.get(e.from) !== laneOf.get(e.to)) {
+    const handDown = laneCols && laneOf.get(e.from) !== laneOf.get(e.to) && !back.has(e) && dMain > 4
+      && (kindOf(e.from) !== 'diamond' || (!bottomExit.has(e.from) && !flowEdges.some((x) => x !== e && x.from === e.from && !back.has(x) && pos.get(x.to) && Math.abs(pos.get(x.to).y + pos.get(x.to).h / 2 - (A.y + A.h / 2)) > 4 && pos.get(x.to).y < B.y)))
+      && (() => {
+        const ax = Math.round(A.x + A.w / 2), bx = Math.round(B.x + B.w / 2), gy = Math.round(B.y - Math.min(18, GAP_MAIN / 2));
+        if (gy <= A.y + A.h + 6) return null;
+        const segs = [[ax, A.y + A.h, ax, gy], [Math.min(ax, bx), gy, Math.max(ax, bx), gy], [bx, gy, bx, B.y]];
+        return hitsAny(segs, A, B) ? null : [[ax, gy], [bx, gy]];
+      })();
+    if (handDown) {
+      // passagem de responsabilidade para uma linha mais abaixo: desce, atravessa as raias logo acima do destino e
+      // entra por cima — não volta pela mesma linha da seta que chegou (sem trechos sobrepostos)
+      fromPort = sides.fwd; toPort = sides.bwd; points = handDown;
+    } else if (columns && laneOf.get(e.from) !== laneOf.get(e.to)) {
       // próxima etapa na coluna ao lado: sai pela direita, sobe pelo corredor entre as colunas e entra pela esquerda
       fromPort = dCross > 0 ? sides.b : sides.a; toPort = dCross > 0 ? sides.a : sides.b;
     } else if (useLanes && !LR && laneOf.get(e.from) === laneOf.get(e.to) && (back.has(e) || dMain < -4) && laneRouteOnce(e, A, B, e.from, 'back')) {
@@ -549,10 +600,6 @@ export function autoLayout(code, opts = {}) {
       // corredor ao lado do destino e entra pela lateral virada para a origem — sem passar por cima da linha que
       // desce do destino nem da seta que chega na origem
       ({ fromPort, toPort, points } = backCross(A, B));
-    } else if (useCols && (back.has(e) || dMain < -4) && colBack(A, B)) {
-      // Funcional vertical: retorno ("Assar mais 5 minutos" → "Fazer teste do palito") sobe por um corredor livre do
-      // lado de fora dos blocos e entra pela lateral do destino — não cruza os ramos do losango
-      ({ fromPort, toPort, points } = colBack(A, B));
     } else if (back.has(e) || dMain < -4) {
       // retorno: na mesma coluna faz um "U" pela lateral; em outra coluna sai de lado e entra por baixo
       if (Math.abs(dCross) < 4) { fromPort = sides.a; toPort = sides.a; } else { fromPort = crossSide; toPort = sides.fwd; }
@@ -605,13 +652,6 @@ export function autoLayout(code, opts = {}) {
     }
     else if (A.shape === 'diamond' || useLanes) { fromPort = crossSide; toPort = sides.bwd; }     // ramo: sai pela ponta lateral
     else { fromPort = sides.fwd; toPort = sides.bwd; }                                           // converge: desce e entra por cima
-    if (dPort.has(e) && !points) { fromPort = dPort.get(e); toPort = sides.bwd; }
-    // várias setas chegando por cima no mesmo bloco: juntam-se numa linha horizontal só, logo acima dele
-    if (useCols && !points && fromPort === sides.fwd && toPort === sides.bwd && Math.abs(dCross) > 4
-      && flowEdges.filter((x) => x.to === e.to && !back.has(x)).length >= 2) {
-      const gy = Math.round(B.y - Math.min(18, GAP_MAIN / 2)), ax = Math.round(A.x + A.w / 2), bx = Math.round(B.x + B.w / 2);
-      if (gy > A.y + A.h + 4 && !hitsAny([[ax, A.y + A.h, ax, gy], [Math.min(ax, bx), gy, Math.max(ax, bx), gy]], A, B)) points = [[ax, gy], [bx, gy]];
-    }
     (usedSide.get(e.from) || usedSide.set(e.from, new Set()).get(e.from)).add(fromPort);
     edges.push({ id: 'e' + (i + 1), from: e.from, to: e.to, fromPort, toPort, ...(points ? { points } : {}), label: decode(e.label), kind: 'orth', dashed: e.type.startsWith('-.'), arrowEnd: true, stroke: P.line });
   });

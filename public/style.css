@@ -571,3 +571,13 @@ body.on-home .topbar .sq-btn { background: rgba(255, 255, 255, .72); -webkit-bac
 .checks .warn .ic { background: #fff2d9; color: #b77a12; }
 .checks .info .ic { background: #e8f1fb; color: #2f6fae; }
 .checks.issues .bad .ic { background: #fde2e2; color: #b42318; }
+
+/* Funcional: responsáveis (aba Análise) */
+.lane-names { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 12px; }
+.lane-names label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.lane-names input, .lane-acts select, .lane-acts input { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: inherit; }
+.lane-acts summary { cursor: pointer; font-size: 14px; font-weight: 600; margin: 6px 0; }
+.lane-acts table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lane-acts td { padding: 5px 6px; border-top: 1px solid var(--border); vertical-align: middle; }
+.lane-acts td:last-child { white-space: nowrap; width: 1%; }
+.lane-acts .new-lane { margin-left: 6px; width: 160px; }

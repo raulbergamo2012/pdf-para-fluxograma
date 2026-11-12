@@ -1,0 +1,19 @@
+Admissão de novo colaborador
+Recrutamento
+1. O gestor abre a requisição de vaga.
+2. O RH publica a vaga e recebe os currículos.
+3. O RH faz a triagem dos currículos.
+4. O gestor entrevista os candidatos selecionados.
+5. Se o gestor aprovar um candidato, o RH envia a proposta. Caso contrário, o RH reabre a triagem.
+Contratação
+1. O candidato envia os documentos pessoais.
+2. O RH confere os documentos.
+3. O jurídico prepara o contrato de trabalho.
+4. O candidato assina o contrato.
+5. O financeiro cadastra o colaborador na folha de pagamento.
+Integração
+1. A TI cria o e-mail e os acessos do colaborador.
+2. O sistema envia as credenciais automaticamente.
+3. O gestor apresenta a equipe e as atividades.
+4. O RH agenda o treinamento de integração.
+5. O colaborador conclui o treinamento.

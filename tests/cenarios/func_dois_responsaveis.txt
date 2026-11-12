@@ -1,0 +1,6 @@
+Troca de produto na loja
+1. O cliente apresenta o produto e a nota fiscal no balcão.
+2. O atendente confere a nota fiscal e o estado do produto.
+3. Se o produto estiver dentro do prazo, o atendente registra a troca no sistema. Caso contrário, o atendente informa ao cliente que a troca não é possível.
+4. O cliente escolhe o novo produto.
+5. O atendente entrega o novo produto ao cliente.

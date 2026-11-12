@@ -6,6 +6,7 @@ import { beautifyFlowchart } from './route.mjs';
 import { VisualEditor, importFromMermaid } from './visual-editor.mjs';
 import { renderSVG, visualToMermaid, cloneModel, routeEdge } from './visual-model.mjs';
 import { autoLayout, codeType } from './swimlane.mjs';
+import { laneInfo, applyLaneEdits } from './functional.mjs';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -860,6 +861,7 @@ function renderAnalysis() {
           <div class="br">${d.branches.map((b) => `<span><b>${esc(b.label)}</b> → ${esc(b.to.slice(0, 60))}</span>`).join('')}</div></li>`).join('')}
       </ul>
     </div>
+    ${itemType(item) === 'raias' ? lanesCard(item) : ''}
     <div class="a-card wide">
       <h3>Sobre o documento</h3>
       <p>Informações da geração.</p>
@@ -879,6 +881,51 @@ function renderAnalysis() {
       </div>
     </div>`;
   $('#btnRegen').onclick = regenerate;
+  if (itemType(item) === 'raias') bindLanesCard(item);
+}
+
+// ---------------------------------------------------------------- Funcional: responsáveis (raias)
+const GENERIC_LANE = 'Responsável não especificado';
+function lanesCard(item) {
+  const info = laneInfo(item.code);
+  if (!info.lanes.length) return '';
+  const generic = info.lanes.some((l) => l.title === GENERIC_LANE);
+  const acts = info.lanes.flatMap((l) => l.nodes.filter((n) => !/^(INICIO|FIM\w*)$/.test(n.id) && !/^N\d/.test(n.id)).map((n) => ({ ...n, lane: l.id })));
+  const opts = (sel) => info.lanes.map((l) => `<option value="${esc(l.id)}"${l.id === sel ? ' selected' : ''}>${esc(l.title)}</option>`).join('') + '<option value="novo">+ Nova raia…</option>';
+  return `<div class="a-card wide" id="lanesCard">
+      <h3>Responsáveis (raias)</h3>
+      <p>${plural(info.lanes.length, 'raia', 'raias')} · ${plural(info.handoffs.length, 'transferência de responsabilidade', 'transferências de responsabilidade')}${info.stages.length ? ` · ${plural(info.stages.length, 'etapa', 'etapas')} (faixas)` : ''}.
+        ${generic ? '<br><b>O documento não diz quem executa algumas atividades.</b> Nada foi inventado: elas estão em “' + GENERIC_LANE + '”. Dê um nome à raia ou mova as atividades para os responsáveis certos.'
+          : info.lanes.length === 1 ? '<br>Só um responsável foi identificado. Se outras pessoas ou áreas participam, mova as atividades para uma nova raia.' : ''}</p>
+      <div class="lane-names">${info.lanes.map((l) => `<label>Raia <input data-lane="${esc(l.id)}" value="${esc(l.title)}" maxlength="60"></label>`).join('')}</div>
+      <details class="lane-acts"${generic || info.lanes.length === 1 ? ' open' : ''}><summary>Atividades e responsáveis (${acts.length})</summary>
+        <table>${acts.map((a) => `<tr><td>${esc(a.label)}</td><td><select data-act="${esc(a.id)}">${opts(a.lane)}</select>
+          <input class="new-lane" data-new="${esc(a.id)}" placeholder="Nome da nova raia" hidden maxlength="60"></td></tr>`).join('')}</table>
+      </details>
+      <div class="a-actions"><button class="btn-outline sm" id="btnLanes">Aplicar responsáveis</button></div>
+    </div>`;
+}
+function bindLanesCard(item) {
+  const card = $('#lanesCard');
+  if (!card) return;
+  card.querySelectorAll('select[data-act]').forEach((sel) => { sel.onchange = () => { card.querySelector(`input[data-new="${sel.dataset.act}"]`).hidden = sel.value !== 'novo'; }; });
+  $('#btnLanes').onclick = async () => {
+    const info = laneInfo(item.code);
+    const rename = {}, move = {};
+    card.querySelectorAll('input[data-lane]').forEach((i) => { const l = info.lanes.find((x) => x.id === i.dataset.lane); if (l && i.value.trim() && i.value.trim() !== l.title) rename[l.id] = i.value.trim(); });
+    card.querySelectorAll('select[data-act]').forEach((sel) => {
+      const from = info.lanes.find((l) => l.nodes.some((n) => n.id === sel.dataset.act))?.id;
+      if (sel.value === 'novo') { const nm = card.querySelector(`input[data-new="${sel.dataset.act}"]`).value.trim(); if (nm) move[sel.dataset.act] = 'novo:' + nm; }
+      else if (sel.value !== from) move[sel.dataset.act] = sel.value;
+    });
+    if (!Object.keys(rename).length && !Object.keys(move).length) { toast('Nada mudou nas raias.'); return; }
+    const code = applyLaneEdits(item.code, { rename, move });
+    Object.assign(item, { code, visual: null });
+    updateItem(item.id, { code, visual: null });
+    await openItem(item);
+    setTab('analysis');
+    toast('Responsáveis atualizados.');
+  };
 }
 
 async function regenerate() {

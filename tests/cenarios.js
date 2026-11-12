@@ -156,10 +156,13 @@ async function scenario(name, label, fn) {
     const m = laneLayout(r), P = (re) => m.nodes.find((n) => re.test(n.text || ''));
     const d = P(/Qual instalação/), heads = [/^Ligar console/, /^Acessar PlayStation/, /^Abrir aplicativo/].map(P);
     assert(heads.every((n) => Math.abs(n.y + n.h / 2 - heads[0].y - heads[0].h / 2) < 2 && n.y > d.y), 'os 3 métodos começam na mesma linha, abaixo do losango');
-    assert(heads[0].x < heads[1].x && heads[1].x < heads[2].x, 'métodos lado a lado, sem empilhar');
-    assert(!m.nodes.some((n) => /^RAIA_/.test(n.id)), 'sem responsáveis: nenhuma raia em coluna');
-    const bands = m.nodes.filter((n) => /^SEC_/.test(n.id));
-    assert(bands.length === 2 && bands.some((b) => /disco · digital/.test(b.text)), 'métodos alternativos na mesma faixa: ' + bands.map((b) => b.text));
+    assert(new Set(heads.map((n) => Math.round(n.x))).size === 3, 'métodos lado a lado, sem empilhar');
+    const lanes = m.nodes.filter((n) => /^RAIA_/.test(n.id)).map((n) => n.text);
+    assert.deepStrictEqual(lanes, ['Responsável não especificado', 'Sistema'], 'raias = quem executa (leitor não identificado + sistema): ' + lanes);
+    const inst = P(/^Instalação inicia/), lSys = m.nodes.find((n) => n.id.startsWith('RAIA_') && n.text === 'Sistema');
+    assert(inst.x >= lSys.x && inst.x + inst.w <= lSys.x + lSys.w, '"a instalação iniciará automaticamente" fica na raia do Sistema');
+    const rows = m.nodes.filter((n) => /^ETAPA_\d/.test(n.id));
+    assert(rows.length === 2 && rows.some((b) => /disco · digital/.test(b.text)), 'etapas como faixas (métodos alternativos na mesma faixa): ' + rows.map((b) => b.text));
     const fim = m.nodes.find((n) => n.id === 'FIM');
     assert(m.nodes.filter((n) => n.shape !== 'container').every((n) => n === fim || n.y < fim.y), 'Fim na última linha');
     const grp = (id) => m.edges.filter((e) => e.from === id && e.label);
@@ -186,8 +189,7 @@ async function scenario(name, label, fn) {
   });
   await scenario('roblox_celular', 'Funcional: etapas, dicas e textos (teste do usuário)', () => {
     const r = generate('roblox_celular', 'raias'); common(r);
-    const titles = r.m.groups.map((g) => g.title);
-    assert(titles.some((t) => /^Etapa 3/.test(t)), '"Etapa 3" não some quando a linha anterior não termina com ponto: ' + titles.join(' | '));
+    assert(/^%% etapa: Etapa 3: Segurança da conta :: /m.test(r.code), '"Etapa 3" não some quando a linha anterior não termina com ponto:\n' + r.code);
     assert(!r.byLabel(/^Etapa 3/), 'título da etapa não vira texto de bloco');
     assert(/Não usar seu nome real/.test(r.byLabel(/^Informar nome de usuário/).label), 'dica "não usar nome real" dentro do bloco do nome');
     assert(/Anotar senha/.test(r.byLabel(/^Informar senha/).label), 'dica "anotar senha" dentro do bloco da senha');
@@ -204,26 +206,102 @@ async function scenario(name, label, fn) {
     const fin = finalize(code, { text: '', type: 'raias' });
     assert(!/Abrir loja/.test(fin.code) && /P1 --> P3/.test(fin.code.replace(/\s+/g, ' ')), fin.code);
   });
-  // regra geral do Funcional, em TODOS os documentos de teste: colunas só com 2+ responsáveis; sem eles, vertical
+  // ---- as 10 estruturas de processo do Funcional
+  const F = (f) => {
+    const text = fs.readFileSync(path.join(dir, f + '.txt'), 'utf8');
+    const rep = {};
+    const code = heuristicMermaid(text, f, 'TD', 'raias', { report: rep });
+    const fin = finalize(code, { text, type: 'raias', sources: rep.sources });
+    const fm = fin.functional;
+    const laneOf = (re) => fm.activities.find((a) => re.test(a.label))?.lane;
+    return { fin, fm, laneOf, lanes: fm.lanes.map((l) => l.title) };
+  };
+  await scenario('func_um_responsavel', 'F1 um responsável: uma raia com o nome dele', () => {
+    const { fm, lanes, fin } = F('func_um_responsavel');
+    assert.deepStrictEqual(lanes, ['Técnico']); assert(!fm.handoffs.length, 'sem transferências');
+    assert(fin.issues.some((i) => /Só um responsável/.test(i.message)), 'a Análise informa que há um responsável só');
+  });
+  await scenario('func_dois_responsaveis', 'F2 dois responsáveis: cada atividade na raia de quem faz', () => {
+    const { lanes, laneOf, fm } = F('func_dois_responsaveis');
+    assert.deepStrictEqual(lanes, ['Cliente', 'Atendente']);
+    assert.strictEqual(laneOf(/^Apresentar produto/), 'Cliente'); assert.strictEqual(laneOf(/^Conferir nota/), 'Atendente');
+    assert.strictEqual(laneOf(/^Escolher novo produto/), 'Cliente'); assert.strictEqual(laneOf(/^Entregar novo produto/), 'Atendente');
+    assert.strictEqual(laneOf(/dentro do prazo\?/), 'Atendente', 'decisão na raia de quem decide');
+    assert(fm.handoffs.length >= 3, 'transferências registradas: ' + fm.handoffs.length);
+  });
+  await scenario('atendimento', 'F3 vários departamentos', () => {
+    const { lanes } = F('atendimento');
+    assert(lanes.length >= 4 && ['Cliente', 'Equipe de vendas', 'Suporte técnico', 'Desenvolvimento'].every((x) => lanes.includes(x)), lanes.join(', '));
+  });
+  await scenario('empresa_reembolso', 'F4/F5/F6 transferências, aprovação/rejeição e retorno entre raias', () => {
+    const { fm, laneOf } = F('empresa_reembolso');
+    assert.strictEqual(laneOf(/^Gestor aprova\?/), 'Gestor');
+    const corr = fm.activities.find((a) => /^Corrigir/.test(a.label)), anal = fm.activities.find((a) => /^Analisar/.test(a.label));
+    assert(corr.lane === 'Colaborador' && corr.out.includes(anal.id), 'rejeição volta ao colaborador, que corrige e reenvia ao gestor');
+    assert(fm.handoffs.some((h) => h.fromLane === 'Colaborador' && h.toLane === 'Gestor' && h.from === corr.id), 'retorno registrado como transferência');
+    const pay = fm.activities.find((a) => /^Realizar pagamento/.test(a.label));
+    assert(pay.conditions.some((c) => /corretos\?/.test(c.question) && c.answer === 'Sim'), 'condição de execução registrada');
+    assert(/realiza o pagamento/.test(pay.source), 'referência ao trecho original');
+  });
+  await scenario('paralelo_evento', 'F7 atividades paralelas lado a lado na mesma faixa', () => {
+    const { fm } = F('paralelo_evento');
+    assert(fm.activities.find((a) => a.id === 'INICIO').out.length >= 2, 'Início abre duas frentes');
+    assert(fm.stages.some((st) => /·/.test(st.title)), 'frentes paralelas na mesma etapa: ' + fm.stages.map((x) => x.title));
+  });
+  await scenario('func_sem_responsavel', 'F8 responsáveis não identificados: raia genérica e aviso, nada inventado', () => {
+    const { lanes, fin } = F('func_sem_responsavel');
+    assert.deepStrictEqual(lanes, ['Responsável não especificado']);
+    assert(fin.issues.some((i) => i.level === 'aviso' && /não diz quem executa/.test(i.message)), 'aviso na Análise');
+  });
+  await scenario('func_etapas_funcoes', 'F9 etapas e funções distintas (etapas não viram raias)', () => {
+    const { lanes, fm, laneOf } = F('func_etapas_funcoes');
+    assert.deepStrictEqual(lanes, ['Solicitante', 'Analista', 'Gestor', 'Comprador']);
+    assert.deepStrictEqual(fm.stages.map((x) => x.title), ['Solicitação', 'Análise', 'Aprovação']);
+    assert.strictEqual(laneOf(/^Ajustar pedido/), 'Solicitante', '"…ao solicitante, que ajusta o pedido" vai para a raia do solicitante');
+    assert.strictEqual(laneOf(/^Emitir ordem/), 'Comprador');
+    assert.strictEqual(fm.activities.find((a) => /^Conferir orçamento/.test(a.label)).stage, 'Análise');
+  });
+  await scenario('func_extenso', 'F10 processo extenso com várias raias', () => {
+    const { lanes, laneOf, fm } = F('func_extenso');
+    assert(lanes.length >= 7, lanes.join(', '));
+    assert.strictEqual(laneOf(/^Entrevistar/), 'Gestor'); assert.strictEqual(laneOf(/^Assinar contrato/), 'Candidato');
+    assert.strictEqual(laneOf(/aprova candidato\?/), 'Gestor', '"Se o gestor aprovar" → decisão do gestor');
+    assert.strictEqual(laneOf(/credenciais/), 'Sistema'); assert.strictEqual(laneOf(/^Criar e-mail/), 'TI');
+    assert.strictEqual(fm.stages.length, 3);
+  });
+
+  // regra geral do Funcional, em TODOS os documentos de teste: raias = responsáveis (nunca títulos de etapa),
+  // etapas = faixas horizontais, cada atividade dentro da sua raia e da sua faixa, setas descendo
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.slice(0, -4))) {
-    await scenario(f, 'Funcional: raias só com responsáveis; senão vertical de cima para baixo', () => {
+    await scenario(f, 'Funcional: raias por responsável, etapas em faixas, fluxo de cima para baixo', () => {
       const r = generate(f, 'raias'); common(r);
-      const m = laneLayout(r);
-      const lanes = m.nodes.filter((n) => /^RAIA_/.test(n.id));
-      if (lanes.length) {
-        assert(!/%% raias: etapas/.test(r.code), 'colunas só quando não são etapas');
-        const { ROLE } = require('../lib/shorten');
-        assert(lanes.filter((l) => l.text.split(/\s+/).some((w) => ROLE.test(w.replace(/[^\wÀ-ú-]/g, '')))).length >= 2, 'raias são responsáveis: ' + lanes.map((l) => l.text));
-      } else {
-        const N = (id) => m.nodes.find((n) => n.id === id);
-        // seta que sobe só como retorno pela lateral (corredor); saindo por baixo e entrando por cima = desenho errado
-        const up = m.edges.filter((e) => e.kind === 'orth' && N(e.to).y < N(e.from).y && e.fromPort === 'bottom');
-        assert(!up.length, 'setas que sobem fora de retorno: ' + up.map((e) => N(e.from).text + '→' + N(e.to).text));
-        const fim = m.nodes.filter((n) => /^FIM/.test(n.id));
-        assert(fim.every((x) => m.nodes.filter((n) => n.shape !== 'container' && !/^FIM/.test(n.id)).every((n) => n.y < x.y + x.h)), 'Fim embaixo');
+      const text = fs.readFileSync(path.join(dir, f + '.txt'), 'utf8');
+      const { ROLE } = require('../lib/shorten');
+      const heads = text.split('\n').map((l) => l.trim()).filter((l) => l && !/^\d+[.)]/.test(l) && l.length < 70).map((l) => l.replace(/[:.]$/, '').toLowerCase());
+      for (const g of r.m.groups) {
+        assert(!heads.includes(g.title.toLowerCase()) || ROLE.test(g.title.split(/\s+/)[0]), 'raia não pode ser título do documento: ' + g.title);
+        assert(g.title === 'Responsável não especificado' || /^(Sistema|Aplicativo|Console|Computador|Site|Impressora|Servidor|Plataforma|Loja|Jogo|Navegador|Roteador|Programa)$/.test(g.title)
+          || g.title.split(/\s+/).some((w) => ROLE.test(w.replace(/[^\wÀ-ú-]/g, ''))), 'raia deve ser um responsável: ' + g.title);
       }
+      const m = laneLayout(r);
+      const N = (id) => m.nodes.find((n) => n.id === id);
+      const lanes = m.nodes.filter((n) => /^RAIA_/.test(n.id));
+      const rows = m.nodes.filter((n) => /^ETAPA_\d/.test(n.id));
+      for (const n of m.nodes.filter((x) => x.shape !== 'container')) {
+        const grp = r.m.nodes.get(n.id)?.group, lane = lanes.find((l) => l.id === 'RAIA_' + grp);
+        if (lane) assert(n.x >= lane.x && n.x + n.w <= lane.x + lane.w, 'caixa fora da raia: ' + n.text);
+        if (rows.length) {
+          const st = (r.code.match(new RegExp('^%% etapa: (.+?) :: .*\\b' + n.id + '\\b', 'm')) || [])[1];
+          const row = rows.find((x) => x.text === st);
+          if (row) assert(n.y >= row.y - 1 && n.y + n.h <= row.y + row.h + 1, 'caixa fora da faixa da etapa: ' + n.text + ' / ' + st);
+        }
+      }
+      // seta que sobe só como retorno pela lateral (corredor); saindo por baixo e entrando por cima = desenho errado
+      const up = m.edges.filter((e) => e.kind === 'orth' && N(e.to).y < N(e.from).y && e.fromPort === 'bottom' && !(e.points && e.points.length >= 3));
+      assert(!up.length, 'setas que sobem fora de retorno: ' + up.map((e) => N(e.from).text + '→' + N(e.to).text));
     });
   }
+
   await scenario('textos', 'complemento do substantivo não fica cortado', () => {
     const { shortenAction } = require('../lib/shorten');
     assert.strictEqual(shortenAction('Alinhe a marcação dourada do processador com a marcação do soquete'), 'Alinhar marcação do processador com marcação do soquete');

@@ -202,14 +202,14 @@ async function apiGenerate(body) {
   const status = body.provider === 'regras' ? { provider: 'regras', model: '' } : await detectStatus(cfg);
   // camadas 3 e 4: todo código (Regras ou IA) passa pelo modelo estruturado e pela validação antes de ir à tela
   const done = (r) => {
-    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length) });
+    const fin = finalize(r.code, { text, type, interpreted: !!(r.notes && r.notes.length), sources: r.sources });
     const issues = [...(r.notes || []).map((m) => ({ level: 'interpretação', message: m })), ...fin.issues];
-    return { ...r, code: fin.code, type, auto, autoReason: pick.reason, issues, structure: summary(fin.model), notes: undefined, durationMs: Date.now() - started };
+    return { ...r, code: fin.code, type, auto, autoReason: pick.reason, issues, structure: summary(fin.model), functional: fin.functional || null, notes: undefined, sources: undefined, durationMs: Date.now() - started };
   };
   const viaRegras = (warning) => {
     const report = {};
     const code = heuristicMermaid(text, title, direction, type, { natural: pick.natural, report });
-    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal });
+    return done({ code: auto ? code.replace(/^(%% tipo: \w+)/, `$1\n%% modo: automático`) : code, provider: 'regras', model: '', warning, notes: report.warnings, goal: report.goal, sources: report.sources });
   };
 
   if (status.provider === 'regras') {
@@ -220,6 +220,9 @@ async function apiGenerate(body) {
     const aiType = pick.natural && type === 'decisao' ? 'ramificado' : type;
     const { raw, truncated } = await generateWithAI(status.provider, runCfg, text, title, direction, aiType);
     let code = sanitizeMermaid(raw, direction);
+    // etapas que a IA marcou (agrupamento secundário do Funcional) — o saneamento remove comentários antes do "flowchart"
+    const aiStages = [...String(raw).matchAll(/^\s*%%\s*etapa:.*::.*$/gm)].map((m) => m[0].trim());
+    if (type === 'raias' && aiStages.length >= 2) code = aiStages.join('\n') + '\n' + code;
     if (!/-->|---|-\.->|==>/.test(code)) throw new Error('a IA não retornou um fluxograma válido');
     let laneNote = '';
     if (type === 'raias') {
@@ -227,12 +230,20 @@ async function apiGenerate(body) {
       const ref = heuristicMermaid(text, title, direction, 'raias').replace(/^\s*%%.*\n/gm, '');
       const fx = fixLanes(code, ref, direction);
       if (fx.fixed) { code = fx.code; laneNote = /reordenadas/.test(fx.reason) ? '' : `Raias corrigidas automaticamente (${fx.reason}).`; }
-      // raias de etapas/fases (não de responsáveis): cada coluna começa no topo, para o diagrama ficar equilibrado
-      if (/%%\s*raias:\s*etapas/.test(heuristicMermaid(text, title, direction, 'raias')) && !/%%\s*raias:/.test(code)) {
-        const titles = [...code.matchAll(/^\s*subgraph\s+\S+?\["([^"]*)"\]/gm)].map((m) => m[1].toLowerCase());
-        const refTitles = [...ref.matchAll(/^\s*subgraph\s+\S+?\["([^"]*)"\]/gm)].map((m) => m[1].toLowerCase());
-        const stageLike = (t) => /^(passo|etapa|fase|parte)\s*\d/.test(t) || refTitles.some((r) => r.split(/\W+/).some((w) => w.length > 3 && t.includes(w)));
-        if (titles.length && titles.filter(stageLike).length >= titles.length / 2) code = '%% raias: etapas\n' + code;
+      // etapas do documento (agrupamento secundário): reaproveita as faixas do modo Regras quando os blocos têm os
+      // mesmos textos — as raias continuam sendo os responsáveis
+      const refFull = heuristicMermaid(text, title, direction, 'raias');
+      const stageLines = [...refFull.matchAll(/^%%\s*etapa:\s*(.+?)\s*::\s*(.*)$/gm)];
+      if (stageLines.length >= 2 && !/^\s*%%\s*etapa:/m.test(code)) {
+        const labelOf = (src, id) => (src.match(new RegExp('\\b' + id + '\\s*[\\[({]+"?([^"\\]\\)}]+)')) || [])[1] || '';
+        const norm = (x) => String(x).toLowerCase().replace(/<br\/?>.*$/, '').replace(/[^a-zà-ú0-9 ]/g, '').trim();
+        const aiIds = [...code.matchAll(/^\s*([A-Za-z_][\w]*)\s*[\[({]+"?([^"\])}]+)/gm)].map((m) => [m[1], norm(m[2])]);
+        const out = stageLines.map((m) => {
+          const labels = new Set(m[2].trim().split(/\s+/).map((id) => norm(labelOf(refFull, id))).filter(Boolean));
+          const ids = aiIds.filter(([, l]) => labels.has(l)).map(([id]) => id);
+          return ids.length ? `%% etapa: ${m[1]} :: ${ids.join(' ')}` : '';
+        }).filter(Boolean);
+        if (out.length >= 2) code = out.join('\n') + '\n' + code;
       }
       if (!/^\s*subgraph\b/m.test(code)) throw new Error('a IA não separou as raias');
     }

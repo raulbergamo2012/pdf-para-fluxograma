@@ -16,7 +16,61 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
-## Novidades da versão 4.0.3: Fluxograma Funcional vertical, com raias só quando há responsáveis
+## Novidades da versão 4.0.4: Fluxograma Funcional de verdade (raias = responsáveis, etapas = faixas)
+
+A 4.0.3 transformava o Funcional sem responsáveis numa coluna única com títulos de etapa: era um fluxograma vertical
+simples, não um Funcional. Agora o Funcional sempre tem **raias de responsáveis**, com progressão de cima para baixo,
+e as **etapas** do documento aparecem como agrupamento secundário. Processo e Decisão não mudaram.
+
+**Como as raias são identificadas** (`lib/functional.js`, regra geral, sem depender do assunto):
+1. **Responsável explícito:** "O gestor analisa…", "A equipe de vendas envia…", "Responsável: Financeiro", "Suporte: verifica…".
+2. **Voz passiva com agente:** "…é aprovado pelo gestor" vai para a raia Gestor.
+3. **Sistema:** "O aplicativo envia um código", "A instalação inicia automaticamente" vão para a raia do sistema (com o nome do equipamento/aplicativo mais citado, ou "Sistema").
+4. **Decisão:** fica na raia de quem decide ("Se o gestor aprovar…" → Gestor). Se a condição fala de uma coisa ("Se o produto estiver no prazo, o atendente…"), fica com quem age na consequência.
+5. **Oração relativa com outro responsável:** "devolve o pedido ao solicitante, que ajusta o pedido…" põe "Ajustar pedido" na raia do Solicitante.
+6. **Frase sem sujeito:** herda o responsável atual.
+7. **Documento que não diz quem executa** (só imperativo ou passiva sem agente): **nada é inventado**. As atividades ficam na raia "Responsável não especificado", a Análise avisa, e o usuário define os responsáveis.
+
+**Etapas ≠ raias:** os títulos do PDF nunca viram raias. Cada etapa vira uma faixa horizontal que atravessa todas as raias, com o nome numa coluna à esquerda (`%% etapa: Título :: P1 P2…` no código). Etapas paralelas ou alternativas ficam na mesma faixa.
+
+**Representação intermediária** (`functionalModel` em `lib/pipeline.js`, devolvida pela API em `functional`):
+- `lanes`: as raias, definidas separadamente dos nós;
+- `stages`: as etapas;
+- `activities`: `{ id, label, type, lane, stage, deps, conditions, in, out, source }`, em que `source` é o trecho original do PDF;
+- `handoffs`: as setas que transferem a responsabilidade.
+
+**Layout** (`public/swimlane.mjs`):
+- **Colunas e linhas:** raias lado a lado, cada uma com a largura das suas colunas; cada caminho mantém a sua coluna dentro da raia; ramos de losango para os lados; 3+ métodos com o ramo que passa para outra raia do lado dela.
+- **Passagens de responsabilidade:** na raia vizinha, na mesma linha (seta reta); em raia distante, desce uma linha (desce, atravessa logo acima do destino e entra por cima).
+- **Retornos entre raias:** escolhem entre três caminhos o primeiro que não passa por cima de blocos nem usa uma ponta ocupada.
+- **Losango:** duas saídas para a mesma raia não saem pela mesma ponta.
+- **Etapas:** cada uma começa abaixo de todas as atividades das etapas anteriores.
+
+**Definir os responsáveis** (aba Análise, cartão "Responsáveis (raias)", em `public/functional.mjs`): renomear raias, mover atividades para outra raia ou criar uma raia nova. O código e o desenho são atualizados.
+
+**Outros ajustes:**
+- **Automático:** o Funcional só é escolhido com 2 ou mais responsáveis reais (ou atividades paralelas).
+- **IA:** as raias que são etapas são redistribuídas para os responsáveis do documento (`lib/lanes.js`); o prompt pede raias de responsáveis e as linhas `%% etapa:`.
+- **Textos:**
+  - "O pedido é embalado e despachado" → "Embalar e despachar pedido";
+  - "reabre a triagem" volta para "Fazer triagem";
+  - "reabre" → "reabrir".
+
+**Testes novos** (`tests/cenarios/func_*.txt` e `tests/cenarios.js`): as 10 estruturas pedidas.
+1. Um responsável (`func_um_responsavel`).
+2. Dois responsáveis (`func_dois_responsaveis`).
+3. Vários departamentos (`atendimento`).
+4. Transferências de responsabilidade (`empresa_reembolso`).
+5. Aprovação e rejeição (`empresa_reembolso`).
+6. Caminhos de retorno (`empresa_reembolso`).
+7. Atividades paralelas (`paralelo_evento`).
+8. Responsáveis não identificados (`func_sem_responsavel`).
+9. Etapas e funções distintas (`func_etapas_funcoes`).
+10. Processo extenso com várias raias (`func_extenso`).
+
+Em todos os documentos de teste, a regra geral também é conferida: raia nunca é título do documento; cada caixa fica dentro da sua raia e da sua faixa; nenhuma seta sobe fora de um retorno.
+
+## Versão 4.0.3 (substituída pela 4.0.4): Funcional vertical sem raias quando não há responsáveis
 
 Mudanças só no **Funcional**. Processo e Decisão continuam iguais (os testes de interface conferem).
 

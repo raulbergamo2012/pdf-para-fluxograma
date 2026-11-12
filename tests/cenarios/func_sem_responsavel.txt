@@ -1,0 +1,5 @@
+Tratamento de pedidos
+1. O pedido é recebido pelo canal de vendas.
+2. Os dados do pedido são conferidos.
+3. Se os dados estiverem corretos, o pedido é separado no estoque. Caso contrário, o pedido é cancelado.
+4. O pedido é embalado e despachado.
