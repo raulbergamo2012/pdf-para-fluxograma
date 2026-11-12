@@ -155,9 +155,18 @@ async function scenario(name, label, fn) {
     assert(r.byLabel(/^Verificar se console está em Modo de Repouso/), '"Certifique-se" sem consequência vira passo');
     const m = laneLayout(r), P = (re) => m.nodes.find((n) => re.test(n.text || ''));
     const d = P(/Qual instalação/), heads = [/^Ligar console/, /^Acessar PlayStation/, /^Abrir aplicativo/].map(P);
-    assert(heads.every((n) => Math.abs(n.y + n.h / 2 - (d.y + d.h / 2)) < 4), 'ramos começam na altura do losango (sem subir)');
+    assert(heads.every((n) => Math.abs(n.y + n.h / 2 - heads[0].y - heads[0].h / 2) < 2 && n.y > d.y), 'os 3 métodos começam na mesma linha, abaixo do losango');
+    assert(heads[0].x < heads[1].x && heads[1].x < heads[2].x, 'métodos lado a lado, sem empilhar');
+    assert(!m.nodes.some((n) => /^RAIA_/.test(n.id)), 'sem responsáveis: nenhuma raia em coluna');
+    const bands = m.nodes.filter((n) => /^SEC_/.test(n.id));
+    assert(bands.length === 2 && bands.some((b) => /disco · digital/.test(b.text)), 'métodos alternativos na mesma faixa: ' + bands.map((b) => b.text));
     const fim = m.nodes.find((n) => n.id === 'FIM');
     assert(m.nodes.filter((n) => n.shape !== 'container').every((n) => n === fim || n.y < fim.y), 'Fim na última linha');
+    const grp = (id) => m.edges.filter((e) => e.from === id && e.label);
+    for (const dd of m.nodes.filter((n) => n.shape === 'diamond')) {
+      const ports = grp(dd.id).map((e) => e.fromPort);
+      assert(new Set(ports).size === ports.length, 'cada saída do losango por uma ponta própria: ' + dd.text + ' ' + ports);
+    }
     assert(m.edges.filter((e) => e.from === 'D3').every((e) => e.label), 'todas as saídas do losango com rótulo');
   });
   await scenario('empresa_reembolso', 'Funcional: cada ação na raia de quem faz', () => {
@@ -195,6 +204,26 @@ async function scenario(name, label, fn) {
     const fin = finalize(code, { text: '', type: 'raias' });
     assert(!/Abrir loja/.test(fin.code) && /P1 --> P3/.test(fin.code.replace(/\s+/g, ' ')), fin.code);
   });
+  // regra geral do Funcional, em TODOS os documentos de teste: colunas só com 2+ responsáveis; sem eles, vertical
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.slice(0, -4))) {
+    await scenario(f, 'Funcional: raias só com responsáveis; senão vertical de cima para baixo', () => {
+      const r = generate(f, 'raias'); common(r);
+      const m = laneLayout(r);
+      const lanes = m.nodes.filter((n) => /^RAIA_/.test(n.id));
+      if (lanes.length) {
+        assert(!/%% raias: etapas/.test(r.code), 'colunas só quando não são etapas');
+        const { ROLE } = require('../lib/shorten');
+        assert(lanes.filter((l) => l.text.split(/\s+/).some((w) => ROLE.test(w.replace(/[^\wÀ-ú-]/g, '')))).length >= 2, 'raias são responsáveis: ' + lanes.map((l) => l.text));
+      } else {
+        const N = (id) => m.nodes.find((n) => n.id === id);
+        // seta que sobe só como retorno pela lateral (corredor); saindo por baixo e entrando por cima = desenho errado
+        const up = m.edges.filter((e) => e.kind === 'orth' && N(e.to).y < N(e.from).y && e.fromPort === 'bottom');
+        assert(!up.length, 'setas que sobem fora de retorno: ' + up.map((e) => N(e.from).text + '→' + N(e.to).text));
+        const fim = m.nodes.filter((n) => /^FIM/.test(n.id));
+        assert(fim.every((x) => m.nodes.filter((n) => n.shape !== 'container' && !/^FIM/.test(n.id)).every((n) => n.y < x.y + x.h)), 'Fim embaixo');
+      }
+    });
+  }
   await scenario('textos', 'complemento do substantivo não fica cortado', () => {
     const { shortenAction } = require('../lib/shorten');
     assert.strictEqual(shortenAction('Alinhe a marcação dourada do processador com a marcação do soquete'), 'Alinhar marcação do processador com marcação do soquete');

@@ -299,7 +299,7 @@ Finalização
   assert(fx.fixed && lanesUsed.size >= 3 && gf.nodes.get('INICIO').sg === gf.sgs[0].id, 'IA amontoada é redistribuída, Início na 1ª raia:\n' + fx.code);
 }
 
-// Funcional equilibrado: raias de etapa começam no topo; documento sem etapas é dividido em fases
+// Funcional SEM responsáveis: vertical (de cima para baixo), etapas em faixas horizontais — nenhuma coluna por título
 (async () => {
   const { autoLayout } = await import('../public/swimlane.mjs');
   const doc = `Como montar um PC
@@ -318,13 +318,21 @@ Etapa 3: Teste
 1. Ligue o computador.
 2. Feche a tampa lateral.`;
   const c = heuristicMermaid(doc, 'PC', 'TD', 'raias');
-  assert(/%% raias: etapas/.test(c), 'marca raias de etapa:\n' + c);
+  assert(/%% raias: etapas/.test(c), 'marca etapas (não responsáveis):\n' + c);
   const m = autoLayout(c, { type: 'raias', title: 'PC' });
-  const lanes = m.nodes.filter((n) => n.band);
-  const first = lanes.map((ln) => Math.min(...m.nodes.filter((n) => !n.band && n.shape !== 'container' && n.id !== 'INICIO' && n.x >= ln.x && n.x + n.w <= ln.x + ln.w).map((n) => n.y)));
-  assert(lanes.length === 3 && Math.max(...first) - Math.min(...first) < 120, 'todas as raias começam no topo: ' + first);
-  const e = m.edges.find((x) => /Instalar SSD|SSD/.test(m.nodes.find((n) => n.id === x.from)?.text || ''));
-  assert(e && e.points && e.points.length >= 2 && e.points.every((p, i, a) => i === 0 || p[0] === a[i - 1][0] || p[1] === a[i - 1][1]), 'passagem entre raias ortogonal');
+  const bands = m.nodes.filter((n) => /^SEC_/.test(n.id)).sort((a, b) => a.y - b.y);
+  assert(bands.length === 3, 'uma faixa por etapa: ' + bands.length);
+  assert(bands.every((b, i) => !i || (b.y === bands[i - 1].y + bands[i - 1].h && b.x === bands[0].x && b.w === bands[0].w)), 'faixas empilhadas, encostadas e da mesma largura');
+  assert(!m.nodes.some((n) => /^RAIA_/.test(n.id)), 'nenhuma raia em coluna');
+  const boxes = m.nodes.filter((n) => n.shape !== 'container');
+  const xs = new Set(boxes.map((n) => Math.round(n.x + n.w / 2)));
+  assert(xs.size === 1, 'sem decisões: uma coluna central só (' + [...xs] + ')');
+  const ys = boxes.map((n) => n.y);
+  assert(m.nodes.find((n) => n.id === 'INICIO').y === Math.min(...ys) && m.nodes.find((n) => n.id === 'FIM').y === Math.max(...ys), 'Início em cima e Fim embaixo');
+  for (const e of m.edges) {
+    const A = m.nodes.find((n) => n.id === e.from), B = m.nodes.find((n) => n.id === e.to);
+    assert(B.y > A.y, 'todas as setas descem: ' + A.text + ' → ' + B.text);
+  }
   const solo = heuristicMermaid(`Como publicar\n1. Acesse o site.\n2. Clique em Criar.\n3. Escolha o vídeo.\n4. Preencha o título.\n5. Escolha a visibilidade.\n6. Agende a data.\n7. Clique em Salvar.\n8. Compartilhe o link.`, 'Publicar', 'TD', 'raias');
-  assert((solo.match(/subgraph/g) || []).length >= 2 && /Fase 1: Acessar site/.test(solo), 'sem etapas: dividido em fases:\n' + solo);
+  assert(!/subgraph/.test(solo) && !/Fase \d/.test(solo), 'sem etapas nem responsáveis: nada de raias/fases inventadas:\n' + solo);
 })().catch((err) => { console.error(err); process.exit(1); });

@@ -16,6 +16,29 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.3: Fluxograma Funcional vertical, com raias só quando há responsáveis
+
+Mudanças só no **Funcional**. Processo e Decisão continuam iguais (os testes de interface conferem).
+
+**Regra geral** (não depende do assunto do PDF):
+- **O documento cita 2 ou mais responsáveis** (cliente, vendas, suporte, financeiro, gestor, sistema…): uma raia em coluna por responsável, com o fluxo de cima para baixo e as setas atravessando as raias na passagem de responsabilidade. É o mesmo de antes.
+- **O documento não cita responsáveis** (ou cita só um): **nenhuma coluna é criada a partir de títulos**. O fluxo é vertical, numa coluna central:
+  - Início em cima e Fim embaixo;
+  - decisões com ramos para os lados e convergência logo abaixo;
+  - cada etapa do PDF vira uma **faixa horizontal** com título à esquerda (o fluxo desce por dentro das faixas).
+- **Etapas que acontecem lado a lado** ficam na mesma faixa, com os ramos lado a lado: preparos paralelos ("Preparo da massa" e "Preparo da cobertura") ou métodos alternativos que saem do mesmo losango ("Instalação por disco", "digital", "remota").
+- **Documento sem etapas nem responsáveis:** fluxo vertical simples. As "Fase 1/Fase 2" inventadas foram removidas.
+
+| Componente | O que mudou |
+|---|---|
+| `lib/heuristic.js` (`serializeLanes`) | Raias só com 2+ responsáveis; senão, etapas marcadas como faixas (`%% raias: etapas`); paralelas e alternativas na mesma faixa; sem fases inventadas |
+| `lib/pipeline.js` (`markStageLanes`) | Código vindo da IA com raias que são títulos de etapas (não funções) recebe a marca de faixas: o desenho fica vertical mesmo assim |
+| `lib/prompt.js` | Regras do Funcional para a IA: sentido TD, raias só para responsáveis reais, etapas em faixas, dicas dentro do bloco |
+| `public/swimlane.mjs` | Modo vertical do Funcional: colunas estáveis por caminho (um ramo nunca pula para baixo de outro), losango com uma ponta por saída, setas que chegam ao mesmo bloco juntas numa linha só, retornos por um corredor lateral, faixas encostadas e da largura do quadro |
+| `lib/validate.js` | A checagem de omissões considera as observações dentro dos blocos |
+
+Fluxogramas salvos no histórico com raias de etapa são redesenhados no novo formato vertical ao serem abertos.
+
 ## Novidades da versão 4.0.2: correções do teste "Roblox pelo celular" (Funcional)
 
 | Problema | Causa | Correção |
