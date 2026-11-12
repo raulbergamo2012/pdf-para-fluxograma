@@ -78,6 +78,7 @@ const VISUAL_STYLES = {
       lista: 'fill:#E7E7E7,stroke:#7F7F7F,stroke-width:1.5px,color:#1A1A1A',
       nota: 'fill:#FFFDE7,stroke:#9E9E9E,stroke-width:1px,stroke-dasharray:4 3,color:#555555',
       duvida: 'fill:#FFF8E6,stroke:#C98A00,stroke-width:1.5px,stroke-dasharray:5 3,color:#6B4E00',
+      revisar: 'stroke:#D97706,stroke-width:2px,stroke-dasharray:6 3',
     },
     labelCss: 'outline:1px solid #8C8C8C;outline-offset:2px;background:#fff;font-weight:700;',
   },
@@ -91,6 +92,7 @@ const VISUAL_STYLES = {
       lista: 'fill:#EAF2FA,stroke:#2E75B6,stroke-width:1.5px,color:#1F3864',
       nota: 'fill:#FFFDE7,stroke:#9E9E9E,stroke-width:1px,stroke-dasharray:4 3,color:#555555',
       duvida: 'fill:#FFF8E6,stroke:#C98A00,stroke-width:1.5px,stroke-dasharray:5 3,color:#6B4E00',
+      revisar: 'stroke:#D97706,stroke-width:2px,stroke-dasharray:6 3',
     },
     labelCss: 'background:#fff;font-weight:600;color:#1F3864;',
   },
@@ -104,6 +106,7 @@ const VISUAL_STYLES = {
       lista: 'fill:#F4F9FB,stroke:#1D7187,stroke-width:1.2px,color:#14213B',
       nota: 'fill:#FFFDE7,stroke:#9E9E9E,stroke-width:1px,stroke-dasharray:4 3,color:#555555',
       duvida: 'fill:#FFF8E6,stroke:#C98A00,stroke-width:1.5px,stroke-dasharray:5 3,color:#6B4E00',
+      revisar: 'stroke:#D97706,stroke-width:2px,stroke-dasharray:6 3',
     },
     labelCss: 'background:#fff;',
   },
@@ -161,7 +164,7 @@ const currentStyle = () => VISUAL_STYLES[state.config?.visualStyle] || VISUAL_ST
 /** Aplica as cores do estilo escolhido ao código (sem alterar o que está salvo) */
 function styledCode(code) {
   const st = currentStyle();
-  const lines = String(code).split('\n').filter((l) => !/^\s*classDef\s+(inicioFim|decisao|erro|lista|nota)\b/.test(l));
+  const lines = String(code).split('\n').filter((l) => !/^\s*classDef\s+(inicioFim|decisao|erro|lista|nota|revisar)\b/.test(l));
   const used = Object.keys(st.classDefs).filter((c) => new RegExp(`\\bclass\\s+\\S+\\s+${c}\\b|:::${c}\\b`).test(code));
   return lines.join('\n').trimEnd() + '\n\n' + used.map((c) => `    classDef ${c} ${st.classDefs[c]}`).join('\n') + '\n';
 }
@@ -412,7 +415,10 @@ async function generateAndValidate(src, mermaidReady, forceProvider, type = pref
   return {
     id: uid(), title: src.title, code, warning, provider, model, type: res.type || type,
     auto: !!res.auto, autoReason: res.autoReason || '', issues: res.issues || [], structure: res.structure || null, goal: res.goal || '',
-    functional: res.functional ? { checks: res.functional.checks || [], content: (res.functional.content || []).map((c) => c.category) } : null,
+    functional: res.functional ? { checks: res.functional.checks || [], content: (res.functional.content || []).map((c) => c.category),
+      // como cada decisão foi entendida: quem decide, o que o "Sim" significa e para onde vai cada resposta
+      decisions: (res.functional.activities || []).filter((a) => a.type === 'decision').map((a) => ({ label: a.label, lane: a.lane, kind: a.decision_kind || '',
+        state: a.condition?.state || 'neutro', outcomes: (a.outcomes || []).map((o) => ({ answer: o.answer, kind: o.kind, to: String(o.to_label || '').replace(/<br\/>.*/, '') })) })) } : null,
     sourceType: src.sourceType, sourceName: src.sourceName, pages: src.pages, words: src.words,
     durationMs: res.durationMs, createdAt: Date.now(), pinned: false,
   };
@@ -925,6 +931,8 @@ function functionalChecksHtml(item) {
   return `<details class="lane-acts f-checks"${f.checks.some((c) => !c.ok) ? ' open' : ''}><summary>Validação do Funcional (${f.checks.filter((c) => c.ok).length}/${f.checks.length})</summary>
       ${parts.length ? `<p class="muted" style="margin:6px 0 10px;font-size:13px">Documento classificado: ${esc(parts.join(' · '))}.</p>` : ''}
       <ul class="checks">${f.checks.map((c) => `<li class="${c.ok ? 'ok' : 'bad'}"><span class="ic">${c.ok ? '✓' : '!'}</span><span>${esc(c.label)}${c.detail ? `<small>${esc(c.detail)}</small>` : ''}</span><span class="pen"></span></li>`).join('')}</ul>
+      ${(f.decisions || []).length ? `<p style="margin:12px 0 4px;font-weight:600;font-size:13px">Decisões interpretadas</p>
+      <ul class="dec-sem" style="margin:0;padding-left:18px;font-size:13px;line-height:1.5">${f.decisions.map((d) => `<li><b>${esc(d.label)}</b> <span class="muted">(${esc(d.kind === 'automatizada' ? 'decisão automática' : d.kind === 'humana' ? 'decisão humana' : 'decisão')}${d.lane ? ' · ' + esc(d.lane) : ''})</span><br>${d.outcomes.map((o) => `${esc(o.answer || '—')} = ${esc(o.kind)} → ${esc(o.to)}`).join(' · ')}</li>`).join('')}</ul>` : ''}
     </details>`;
 }
 function bindLanesCard(item) {

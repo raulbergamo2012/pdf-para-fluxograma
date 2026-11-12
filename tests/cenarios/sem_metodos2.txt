@@ -1,0 +1,17 @@
+Instalação do programa
+
+Você pode instalar o programa de duas formas: pelo disco ou pelo download.
+
+Instalação pelo disco
+1. Insira o disco na unidade.
+2. Abra o instalador do disco.
+
+Instalação pelo download
+1. Acesse a página de downloads.
+2. Baixe o instalador.
+3. Abra o arquivo baixado.
+
+Finalização
+1. Aceite os termos de uso.
+2. Retire o disco da unidade.
+3. Reinicie o computador.

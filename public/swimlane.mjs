@@ -350,9 +350,11 @@ export function autoLayout(code, opts = {}) {
     const k = kindOf(id), c = g.classes.get(id) || new Set();
     if (k === 'note') return { shape: 'rounded', fill: P.noteFill, stroke: P.noteStroke, dashed: true, color: '#555555' };
     if (k === 'diamond') return { shape: 'diamond', fill: P.decisionFill, stroke: P.decisionStroke };
-    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: P.fill, stroke: P.stroke, ...(laneTint ? laneTint(id) : {}) };   // entrada/saída de dados
+    if (g.nodes.get(id)?.open === '[/' || g.nodes.get(id)?.open === '[\\') return { shape: 'parallelogram', fill: P.fill, stroke: P.stroke, ...(laneTint ? laneTint(id) : {}), ...(c.has('revisar') ? { stroke: '#D97706', dashed: true } : {}) };   // entrada/saída de dados
     if (k === 'terminator') return { shape: 'terminator', fill: P.terminalFill, stroke: P.terminalStroke };
     if (c.has('duvida')) return { shape: 'rect', fill: '#FFF8E6', stroke: '#C98A00', dashed: true, color: '#6B4E00' };   // ponto com dúvida no documento
+    // texto a revisar (possível erro de extração do PDF): mantém a cor do responsável, borda laranja tracejada
+    if (c.has('revisar')) return { shape: 'rect', ...(laneTint ? laneTint(id) : { fill: P.fill }), stroke: '#D97706', dashed: true };
     if (laneTint) return { shape: 'rect', ...laneTint(id) };   // Funcional: a cor é a do responsável (também nos desvios)
     if (c.has('erro')) return { shape: 'rect', fill: P.errorFill, stroke: P.errorStroke };
     return { shape: 'rect', fill: P.fill, stroke: P.stroke };
@@ -621,7 +623,7 @@ export function autoLayout(code, opts = {}) {
         const side = dCross > 0 ? sides.b : sides.a;
         if ((usedSide.get(e.from) || new Set()).has(side)) return null;
         const pref = /^n[aã]o\b/i.test(e.label || '') ? sides.a : /^sim\b/i.test(e.label || '') ? sides.b : side;
-        if (pref !== side && flowEdges.some((x) => x !== e && x.from === e.from && (/^n[aã]o\b/i.test(x.label || '') ? sides.a : sides.b) === side)) return null;
+        if (pref !== side && flowEdges.some((x) => x !== e && x.from === e.from && bottomExit.get(e.from) !== x && (/^n[aã]o\b/i.test(x.label || '') ? sides.a : sides.b) === side)) return null;
         const ay = Math.round(A.y + A.h / 2), tx = Math.round(dCross > 0 ? A.x + A.w : A.x), bx = Math.round(B.x + B.w / 2);
         if (dCross > 0 ? bx < tx + 24 : bx > tx - 24) return null;
         const segs = [[tx, ay, bx, ay], [bx, ay, bx, B.y]];
@@ -703,6 +705,28 @@ export function autoLayout(code, opts = {}) {
     (usedSide.get(e.from) || usedSide.set(e.from, new Set()).get(e.from)).add(fromPort);
     edges.push({ id: 'e' + (i + 1), from: e.from, to: e.to, fromPort, toPort, ...(points ? { points } : {}), label: decode(e.label), kind: 'orth', dashed: e.type.startsWith('-.'), arrowEnd: true, stroke: P.line });
   });
+  // losango com DUAS respostas saindo pela mesma ponta lateral (Sim e Não juntos): a resposta de destino mais próximo
+  // passa a sair pela ponta de baixo (desce, atravessa e entra por cima) — cada resposta com a sua ponta, sem linhas
+  // paralelas nem rótulos sobre a seta da outra resposta
+  if (!LR) for (const id of steps) {
+    if (kindOf(id) !== 'diamond') continue;
+    const outs = edges.filter((e) => e.from === id && e.kind === 'orth' && !back.has(flowEdges.find((f) => f.from === e.from && f.to === e.to)));
+    const ports = outs.map((e) => e.fromPort);
+    if (ports.includes(sides.fwd)) continue;
+    for (const side of [sides.a, sides.b]) {
+      const same = outs.filter((e) => e.fromPort === side && pos.get(e.to) && pos.get(e.to).y > pos.get(id).y + pos.get(id).h);
+      if (same.length < 2) continue;
+      const A = pos.get(id);
+      const near = same.sort((x, y) => pos.get(x.to).y - pos.get(y.to).y)[0], B = pos.get(near.to);
+      const ax = Math.round(A.x + A.w / 2), bx = Math.round(B.x + B.w / 2), gy = Math.round(A.y + A.h + Math.min(18, GAP_MAIN / 2));
+      if (gy >= B.y - 6) continue;
+      const segs = [[ax, A.y + A.h, ax, gy], [Math.min(ax, bx), gy, Math.max(ax, bx), gy], [bx, gy, bx, B.y]];
+      if (hitsAny(segs, A, B)) continue;
+      near.fromPort = sides.fwd; near.toPort = sides.bwd; near.points = Math.abs(ax - bx) > 2 ? [[ax, gy], [bx, gy]] : undefined;
+      if (!near.points) delete near.points;
+      break;
+    }
+  }
   // losango com várias saídas pela MESMA ponta (ex.: "Qual instalação usar?" → Disco / Digital / Remota): os rótulos
   // ficariam empilhados na ponta; vão para o trecho final de cada seta, junto do destino
   const byPort = new Map();

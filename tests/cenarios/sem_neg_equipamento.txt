@@ -1,0 +1,8 @@
+Equipamento não liga
+
+1. Confira se o cabo de energia está conectado.
+2. O equipamento continua sem ligar? Se não, siga para a configuração inicial.
+3. Se sim, troque a tomada e tente ligar novamente.
+4. Se o equipamento ligar, siga para a configuração inicial.
+5. Se ainda não ligar, encaminhe o equipamento para a assistência técnica.
+6. Configuração inicial: selecione o idioma e conecte à rede.

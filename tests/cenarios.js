@@ -18,11 +18,11 @@ function generate(name, type = 'auto') {
   const pick = type === 'auto' ? chooseType(text, name) : { type, natural: false };
   const report = {};
   const code = heuristicMermaid(text, name, 'TD', pick.type, { natural: pick.natural, report });
-  const fin = finalize(code, { text, type: pick.type, interpreted: !!report.warnings.length });
+  const fin = finalize(code, { text, type: pick.type, interpreted: !!report.warnings.length, content: report.content, sources: report.sources });
   const m = fromMermaid(fin.code);
   const byLabel = (re) => [...m.nodes.values()].find((n) => re.test(n.label));
   const has = (a, b, label) => m.edges.some((e) => e.from === a?.id && e.to === b?.id && (label === undefined || e.label === label));
-  return { text, pick, code: fin.code, issues: fin.issues, notes: report.warnings, goal: report.goal, m, byLabel, has };
+  return { text, pick, code: fin.code, issues: fin.issues, notes: report.warnings, goal: report.goal, m, byLabel, has, functional: fin.functional };
 }
 
 const results = [];
@@ -239,8 +239,161 @@ async function scenario(name, label, fn) {
     assert.strictEqual(laneOf(/dentro do prazo\?/), 'Atendente', 'decisão na raia de quem decide');
     assert(fm.handoffs.length >= 3, 'transferências registradas: ' + fm.handoffs.length);
   });
+  // ---- Semântica do Funcional: estruturas genéricas (não dependem do assunto dos documentos)
+  {
+    const F = (f) => generate(f, 'raias');
+    const out = (r, d) => r.m.edges.filter((e) => e.from === d?.id);
+    const to = (r, d, ans) => r.m.nodes.get(out(r, d).find((e) => e.label === ans)?.to);
+    const isEnd = (n) => n && n.type === 'end';
+    const failEnd = (n) => isEnd(n) && /sem conclus/i.test(n.label);
+    const chk = (r, id) => r.functional.checks.find((c) => c.id === id);
+
+    await scenario('sem_neg_conexao', 'decisão NEGATIVA: Sim = falha (corrige), Não = sucesso (encerra)', () => {
+      const r = F('sem_neg_conexao');
+      const d = r.byLabel(/Internet não funciona\?/);
+      assert(d, 'pergunta negativa preservada');
+      assert(/^Reiniciar roteador/.test(to(r, d, 'Sim')?.label), 'Sim (há problema) → ação corretiva: ' + to(r, d, 'Sim')?.label);
+      assert(isEnd(to(r, d, 'Não')) && !failEnd(to(r, d, 'Não')), 'Não (conexão normal, atendimento encerrado) → Fim, sem caixa "Estar normal"');
+      assert(!r.byLabel(/^Estar normal|Resolver problema/), 'frase de RESULTADO não vira atividade');
+      assert(r.has(r.byLabel(/^Reiniciar roteador/), r.byLabel(/^Testar conexão/)), '"Após reiniciar, teste" continua a partir da correção (não volta para "Verificar luz")');
+      const v = r.byLabel(/Conexão volta\?/);
+      assert(v && isEnd(to(r, v, 'Sim')) && !failEnd(to(r, v, 'Sim')), 'sucesso ("o problema foi resolvido") → Fim');
+      assert(/^Contatar suporte/.test(to(r, v, 'Não')?.label), '"problema persista" = o Não da MESMA decisão (sem 2º losango)');
+      assert(!r.byLabel(/persist/i), 'sem losango "Problema persiste?" depois do sucesso');
+      const dd = r.functional.activities.find((a) => a.id === d.id);
+      assert(dd.condition.negated && dd.condition.state === 'falha', 'expressão normalizada: NÃO internet funciona → falha');
+      assert(dd.outcomes.find((o) => o.answer === 'Sim').kind === 'falha' && dd.outcomes.find((o) => o.answer === 'Não').kind === 'encerramento', 'cada resposta associada ao destino e ao tipo de resultado');
+      assert(r.functional.lanes.length === 1 && r.functional.lanes[0].generic, 'sem responsáveis no texto → raia genérica (nada inventado)');
+      assert(r.functional.checks.every((c) => c.ok), 'as 14 verificações passam: ' + r.functional.checks.filter((c) => !c.ok).map((c) => c.label + ' ' + c.detail));
+    });
+
+    await scenario('sem_neg_equipamento', 'negativa + "siga para X" + falha que encaminha não segue para o caminho de sucesso', () => {
+      const r = F('sem_neg_equipamento');
+      const d = r.byLabel(/continua sem ligar\?/);
+      const cfg = r.byLabel(/^Selecionar idioma/);
+      assert(r.has(d, cfg, 'Não'), 'Não (ligou) → salto "siga para a configuração inicial"');
+      assert(!r.byLabel(/^Seguir para configura/), 'o salto não vira atividade');
+      assert(/^Trocar tomada/.test(to(r, d, 'Sim')?.label), 'Sim (não liga) → trocar tomada');
+      assert(r.byLabel(/^Tentar ligar novamente/), '"tente ligar novamente" é uma nova tentativa (bloco), não um retorno a "Verificar cabo"');
+      assert(!r.has(r.byLabel(/^Tentar ligar|^Trocar tomada/), r.byLabel(/^Verificar se cabo/)), 'sem laço inventado');
+      const l = r.byLabel(/Equipamento liga\?/);
+      assert(r.has(l, cfg, 'Sim'), 'ligou → configuração inicial');
+      const asst = r.byLabel(/^Encaminhar equipamento para assistência/);
+      assert(r.has(l, asst, 'Não') && !r.has(asst, cfg), 'falha → assistência e NÃO segue para a configuração');
+      assert(r.m.edges.some((e) => e.from === asst.id && failEnd(r.m.nodes.get(e.to))), 'encaminhamento encerra em "Fim sem conclusão"');
+    });
+
+    await scenario('sem_sucesso_falha', 'aprovado × recusado = uma decisão; a falha não leva às atividades do sucesso', () => {
+      const r = F('sem_sucesso_falha');
+      const ds = [...r.m.nodes.values()].filter((n) => n.type === 'decision');
+      assert.strictEqual(ds.length, 1, 'uma decisão (sem "Pagamento é recusado?" depois do sucesso): ' + ds.map((x) => x.label));
+      const d = ds[0];
+      assert(/^Emitir nota fiscal/.test(to(r, d, 'Sim')?.label), 'Sim → nota fiscal');
+      const neg = to(r, d, 'Não');
+      assert(/^Solicitar outro meio/.test(neg?.label), 'Não → solicitar outro meio');
+      assert(!r.has(neg, r.byLabel(/^Separar produtos/)), 'pagamento recusado NÃO segue para separar produtos');
+      assert(r.m.edges.some((e) => e.from === neg.id && failEnd(r.m.nodes.get(e.to))), 'continuidade não descrita → "Fim sem conclusão" + aviso');
+      assert(r.notes.some((w) => /não diz o que acontece depois de "Solicitar outro meio/.test(w)), 'aviso de continuidade não descrita');
+      assert(r.functional.lanes.length === 4, '4 raias (cliente, sistema, estoque, transportadora)');
+      assert.strictEqual(r.functional.activities.find((a) => a.id === d.id).decision_kind, 'automatizada', 'decisão do sistema = automatizada');
+    });
+
+    await scenario('sem_humano_auto', 'ação humana × automatizada; decisão de quem decide; correção volta à validação', () => {
+      const r = F('sem_humano_auto');
+      const fm = r.functional, act = (re) => fm.activities.find((a) => re.test(a.label));
+      assert.strictEqual(act(/^Acessar sistema/).lane, 'Comprador', '"acessa o sistema" é do comprador (citar tecnologia não faz do sistema o executor)');
+      assert.strictEqual(act(/^Validar .*CNPJ/).lane, 'Sistema', 'validação automática no sistema');
+      assert.strictEqual(act(/CNPJ é inválido\?/).decision_kind, 'automatizada', 'validação do sistema = decisão automatizada');
+      assert.strictEqual(act(/^Corrigir dados/).lane, 'Comprador', '"e o comprador corrige os dados" vira bloco do comprador');
+      assert(r.has(r.byLabel(/^Corrigir dados/), r.byLabel(/^Validar .*CNPJ/)), 'correção volta para a validação (laço com saída)');
+      const ap = act(/Aprova cadastro\?/);
+      assert(ap && ap.lane === 'Analista fiscal' && ap.decision_kind === 'humana', 'decisão humana na raia de quem decide');
+      assert.strictEqual(fm.activities.filter((a) => a.type === 'decision').length, 2, '"decide se aprova" + "Se aprovado/Se reprovado" = UMA decisão (sem "Decidir")');
+      assert(!r.byLabel(/^Decidir$/), 'sem bloco "Decidir"');
+      assert(chk(r, 9).ok, 'laço tem condição de saída');
+    });
+
+    await scenario('sem_metodos', 'métodos alternativos: intro não vira ramo; condição de método preservada; repetição intencional', () => {
+      const r = F('sem_metodos');
+      const d = r.byLabel(/Portal ou e-mail\?/);
+      assert(d && out(r, d).length === 2, 'escolha com 2 saídas (a frase "de duas formas" não vira ramo nem atividade)');
+      assert(!r.byLabel(/duas formas|Deseja enviar/), 'anúncio das alternativas não é atividade');
+      const em = r.byLabel(/Envio foi feito por e-mail\?/);
+      assert(em && /^Aguardar resposta/.test(to(r, em, 'Sim')?.label), 'atividade só do e-mail mantém a condição');
+      assert.strictEqual(r.functional.activities.find((a) => /^Aguardar resposta/.test(a.label)).lane, 'Solicitante', '"aguarde a resposta automática" é do solicitante, não do sistema');
+      assert(!r.issues.some((i) => /aparece 2 vezes/.test(i.message)), '"Anexar arquivo" nos dois métodos é repetição intencional (sem aviso)');
+      assert(chk(r, 7).ok && chk(r, 13).ok, 'verificações 7 e 13 passam');
+    });
+
+    await scenario('sem_metodos2', 'convergência condicional: atividade de um método fica só no caminho dele', () => {
+      const r = F('sem_metodos2');
+      const g = r.byLabel(/Instalação pelo disco\?/);
+      const ret = r.byLabel(/^Retirar disco/);
+      assert(g && r.has(g, ret, 'Sim'), '"Retire o disco" depois da junção ganha a condição do método');
+      assert(r.has(g, r.byLabel(/^Reiniciar computador/), 'Não'), 'o download segue sem retirar disco');
+      assert(r.has(r.byLabel(/^Abrir instalador/), r.byLabel(/^Aceitar termos/)) && r.has(r.byLabel(/^Abrir arquivo baixado/), r.byLabel(/^Aceitar termos/)), 'atividades comuns convergem');
+      assert(chk(r, 13).ok, 'verificação 13 passa');
+    });
+
+    await scenario('sem_recuperacao', 'recuperação: verificação depois da correção, repetição com limite e saída', () => {
+      const r = F('sem_recuperacao');
+      const v = r.byLabel(/Serviço voltou a responder\?/);
+      assert(v, '"Verifique se voltou a responder" + "Se responder" = uma decisão (texto completo)');
+      assert(/^Registrar ocorrência e encerrar/.test(to(r, v, 'Sim')?.label), 'sucesso → registrar e encerrar (sem "encerre")');
+      const p = r.byLabel(/persiste após 3 tentativas\?/);
+      assert(p && r.has(v, p, 'Não'), 'falha → pergunta com o limite de tentativas');
+      assert(r.has(p, r.byLabel(/^Reiniciar serviço/), 'Não'), 'ainda dentro do limite → repete a reinicialização');
+      assert(/^Acionar equipe de plantão/.test(to(r, p, 'Sim')?.label), '"Persistindo a falha, acione…" é a saída do laço (sem bloco "Persistir falha")');
+      assert(!r.byLabel(/^Persistir/), 'sem "Persistir falha"');
+      assert(chk(r, 9).ok, 'laço com condição de saída');
+    });
+
+    await scenario('sem_recuperacao_sem_fim', 'correção sem verificação descrita: segue em frente e avisa (sem laço inventado)', () => {
+      const r = F('sem_recuperacao_sem_fim');
+      assert(r.has(r.byLabel(/^Limpar cache/), r.byLabel(/^Fazer login/)), 'segue para o próximo passo');
+      assert(!r.m.edges.some((e) => e.from === r.byLabel(/^Limpar cache/).id && e.to === r.byLabel(/^Abrir aplicativo/).id), 'sem retorno inventado');
+      assert(r.notes.some((w) => /Limpar cache do aplicativo", o documento não diz se o problema foi resolvido/.test(w)), 'avisa que a verificação não foi descrita');
+      const s = r.byLabel(/Senha não é aceita\?/);
+      assert(s && /^Redefinir senha/.test(to(r, s, 'Sim')?.label), 'pergunta negativa: Sim (não aceita) → redefinir');
+    });
+
+    await scenario('sem_truncado', 'textos: palavra hifenizada unida, quebra suspeita marcada, redundância unida', () => {
+      const r = F('sem_truncado');
+      assert(r.byLabel(/^Acessar painel de administração/), '"adminis- tração" → "administração"');
+      const a = r.byLabel(/autenticação/);
+      assert(a, 'frase "Na aba Segurança, ative…" não some (era descartada como explicação)');
+      assert(a.classes.has('revisar') && r.issues.some((i) => /Texto a revisar: "Ativar autenticação.*eta pas/.test(i.message)), 'pedaços sem prova ("eta pas") ficam marcados para revisão');
+      assert(!chk(r, 6).ok, 'verificação 6 aponta a descrição');
+      assert(r.byLabel(/^Salvar alterações/) && !r.byLabel(/^Clicar em Salvar$/), '"Clique em Salvar" + "Salve as alterações" = um bloco');
+      assert(r.byLabel(/^Preencher formulário/) && r.byLabel(/^Revisar formulário/), 'ações diferentes sobre o mesmo objeto continuam separadas');
+    });
+
+    await scenario('func_recomendacoes_opcionais', 'opcionais continuam escolhas e recomendações continuam notas (14 verificações)', () => {
+      const r = F('func_recomendacoes_opcionais');
+      assert(r.functional.activities.some((a) => a.type === 'decision' && /^(Deseja|Precisa)\b/.test(a.label)), 'opcional = escolha');
+      assert(chk(r, 11).ok && chk(r, 14).ok, 'recomendação não vira etapa; fidelidade');
+    });
+
+    await scenario('sem_todos', 'as 14 verificações rodam em todos os documentos do Funcional', () => {
+      for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.txt')).map((x) => x.replace('.txt', ''))) {
+        const r = F(f);
+        assert.strictEqual(r.functional.checks.length, 14, f + ': 14 verificações');
+        const bad = r.functional.checks.filter((c) => !c.ok && ![6, 12].includes(c.id));
+        assert(!bad.length, f + ': ' + bad.map((c) => `${c.id} ${c.label}: ${c.detail}`).join(' | '));
+        for (const d of r.functional.activities.filter((a) => a.type === 'decision')) assert(d.condition && d.outcomes.length >= 2, f + ': decisão sem expressão/saídas: ' + d.label);
+        // desenho: losango de Sim/Não com uma ponta para cada resposta
+        const m = laneLayout(r);
+        for (const d of m.nodes.filter((n) => n.shape === 'diamond')) {
+          const ps = m.edges.filter((e) => e.from === d.id && e.kind !== 'straight').map((e) => e.fromPort);
+          if (ps.length === 2) assert(ps[0] !== ps[1], f + ': as duas respostas de "' + d.text + '" saem pela mesma ponta');
+        }
+      }
+    });
+  }
+
   await scenario('func_layout', 'Funcional: sem cruzamentos de setas, Fim por raia e ramo negativo que encerra', () => {
-    for (const f of ['atendimento', 'func_recomendacoes_opcionais', 'func_secoes_responsaveis', 'func_um_responsavel', 'instalar_ps5']) {
+    for (const f of ['atendimento', 'func_recomendacoes_opcionais', 'func_secoes_responsaveis', 'func_um_responsavel', 'instalar_ps5',
+      'sem_metodos', 'sem_metodos2', 'sem_humano_auto', 'sem_neg_conexao', 'sem_neg_equipamento', 'sem_sucesso_falha', 'sem_recuperacao']) {
       const v = visual(generate(f, 'raias'));
       assert.strictEqual(v.crossings, 0, f + ': setas que se cruzam');
       assert.strictEqual(v.through, 0, f + ': setas sobre blocos');

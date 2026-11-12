@@ -1,0 +1,7 @@
+Diagnóstico de falha de conexão
+
+1. Verifique se a luz do roteador está acesa.
+2. A internet não funciona? Se sim, reinicie o roteador. Se não, a conexão está normal e o atendimento é encerrado.
+3. Após reiniciar, teste a conexão novamente.
+4. Se a conexão voltar, o problema foi resolvido.
+5. Caso o problema persista, entre em contato com o suporte da operadora.

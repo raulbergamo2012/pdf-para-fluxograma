@@ -1,0 +1,9 @@
+Cadastro de fornecedor
+
+1. O comprador acessa o sistema e preenche o cadastro do fornecedor.
+2. O sistema valida automaticamente o CNPJ.
+3. Se o CNPJ for inválido, o sistema exibe uma mensagem de erro e o comprador corrige os dados.
+4. O analista fiscal consulta o sistema de notas e confere a situação fiscal.
+5. O analista fiscal decide se aprova o cadastro.
+6. Se aprovado, o sistema envia um e-mail de boas-vindas ao fornecedor.
+7. Se reprovado, o analista fiscal registra o motivo no sistema.

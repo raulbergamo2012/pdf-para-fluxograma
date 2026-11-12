@@ -1,0 +1,7 @@
+Recuperação do serviço
+
+1. Reinicie o serviço pelo painel.
+2. Verifique se o serviço voltou a responder.
+3. Se o serviço responder, registre a ocorrência e encerre.
+4. Se ainda não responder, repita a reinicialização até 3 vezes.
+5. Persistindo a falha, acione a equipe de plantão.

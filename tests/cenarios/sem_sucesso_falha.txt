@@ -1,0 +1,8 @@
+Processamento de pedido
+
+1. O cliente finaliza o pedido no site.
+2. O sistema verifica o pagamento automaticamente.
+3. Se o pagamento for aprovado, o sistema emite a nota fiscal.
+4. Se o pagamento for recusado, o sistema solicita outro meio de pagamento ao cliente.
+5. O estoque separa os produtos.
+6. A transportadora entrega o pedido.

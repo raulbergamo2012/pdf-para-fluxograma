@@ -1,0 +1,19 @@
+Envio de documentos para protocolo
+
+O solicitante pode enviar o documento de duas formas: pelo portal ou por e-mail.
+
+Envio pelo portal
+1. Acesse o portal de serviços.
+2. Anexe o arquivo em PDF.
+3. Clique em Enviar.
+
+Envio por e-mail
+1. Escreva para o endereço do protocolo.
+2. Anexe o arquivo em PDF.
+3. Envie a mensagem.
+
+Após o envio
+1. O sistema gera um número de protocolo.
+2. Se o envio foi feito por e-mail, aguarde a resposta automática com a confirmação de recebimento.
+3. O setor de protocolo analisa o documento.
+4. O setor de protocolo arquiva o documento.

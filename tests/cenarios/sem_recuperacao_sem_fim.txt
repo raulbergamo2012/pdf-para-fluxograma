@@ -1,0 +1,7 @@
+Problemas comuns
+
+1. Abra o aplicativo.
+2. Se o aplicativo travar, limpe o cache do aplicativo.
+3. Faça login com seu usuário.
+4. Se a senha não for aceita, redefina a senha pelo link "Esqueci minha senha".
+5. Acesse a tela inicial.

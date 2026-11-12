@@ -16,6 +16,40 @@ Aplicação local que transforma documentações (PDFs do Confluence, manuais, p
 
 Não há `npm install`: o projeto não tem dependências, e o Mermaid e o pdf.js já estão em `public/vendor`. Tudo funciona sem internet.
 
+## Novidades da versão 4.0.6: lógica das decisões, contexto dos caminhos e validação semântica
+
+**Decisões pelo significado, não pelas palavras** (`lib/semantics.js`, novo)
+- Cada condição vira uma expressão normalizada (assunto, predicado, negação, estado). Em "Internet não funciona?" o
+  **Sim é a falha** (vai para a correção) e o **Não é o sucesso**.
+- Condições opostas sobre o mesmo assunto viram **uma** decisão: "aprovado/recusado", "a conexão voltar/o problema
+  persistir", "ligar/ainda não ligar", "decide se aprova" + "Se aprovado…".
+- Cada resposta é classificada (sucesso, falha, continuidade, repetição, encerramento) e ligada ao seu destino.
+- Quando os dois resultados estão descritos, o processo segue pelo **sucesso**; a falha sem continuidade descrita
+  termina em "Fim sem conclusão" (com aviso). Encaminhar para suporte/assistência encerra o procedimento.
+- Frases de resultado ("o problema foi resolvido", "a conexão está normal e o atendimento é encerrado") não viram caixa:
+  levam ao Fim. "Siga para a configuração inicial" vira uma seta até esse ponto do documento.
+- "Reinicie o roteador" não volta mais para "Verificar luz do roteador" só por citar o roteador (repetir exige a mesma
+  ação). "Repita até 3 vezes" + "Persistindo a falha…" = laço com limite e saída.
+
+**Contexto dos caminhos**: a frase que anuncia alternativas ("de duas formas: portal ou e-mail") não vira ramo; uma
+atividade de um só método depois da junção ("Retire o disco") fica só no caminho dele. Repetição em caminhos
+alternativos não é aviso de duplicidade.
+
+**Responsáveis**: instrução ao leitor ("Aguarde a resposta automática") nunca fica com o Sistema só por citar
+tecnologia; "o sistema exibe o erro e o comprador corrige" vira dois blocos, cada um na sua raia.
+
+**Textos** (`lib/textreview.js`, novo): palavras quebradas pela extração são unidas só com prova no documento; o resto
+fica com borda tracejada laranja e aviso "Texto a revisar" com o trecho original. Frases como "Na aba X, ative…" não
+são mais descartadas. "Clique em Salvar" + "Salve as alterações" viram um bloco.
+
+**Validação semântica** (`lib/semcheck.js`, novo): as 14 verificações rodam sobre a estrutura intermediária (decisões,
+respostas × destinos, sucesso/falha, contexto, responsáveis humano × sistema, descrições, duplicidade, continuidade,
+ciclos, encerramentos, recomendações, condições sem tratamento, caminhos incompatíveis, fidelidade). A aba Análise
+mostra também as **decisões interpretadas** (o que cada resposta significa e para onde vai).
+
+**Testes**: 67 cenários (9 documentos genéricos novos `sem_*.txt`), incluindo zero cruzamentos e uma ponta do losango
+por resposta.
+
 ## Novidades da versão 4.0.5: responsáveis, classificação do conteúdo e lógica do Funcional
 
 **Quem faz cada atividade** (`lib/functional.js`, sem depender da IA)

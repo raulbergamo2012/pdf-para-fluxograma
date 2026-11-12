@@ -1,0 +1,11 @@
+Configuração do painel
+
+1. Acesse o painel de adminis-
+tração com seu usuário.
+2. Na aba Segurança, ative a autenticação em duas eta pas.
+3. Clique em Salvar.
+4. Salve as alterações.
+5. Revise as permissões dos usuários e
+6. Confira o registro de atividades.
+7. Preencha o formulário de solicitação.
+8. Revise o formulário de solicitação.
